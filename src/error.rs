@@ -5,7 +5,7 @@ pub struct ParseError<'i>(pub Span<'i>, pub String);
 
 impl<'i> Display for ParseError<'i> {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}: {}", self.0, self.1)
     }
 }
 
@@ -19,12 +19,15 @@ impl<'i> std::error::Error for ParseError<'i> {
 pub struct Span<'i> {
     pub input: &'i str,
     pub location: Location,
-    pub len: usize,
 }
 
 impl<'i> Display for Span<'i> {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "{}, {} to {}", self.input, self.location, self.len)
+        write!(
+            f,
+            "'{}' error at ln {}, col {}",
+            self.input, self.location.line, self.location.column
+        )
     }
 }
 
@@ -32,10 +35,4 @@ impl<'i> Display for Span<'i> {
 pub struct Location {
     pub line: usize,
     pub column: usize,
-}
-
-impl Display for Location {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "at ln {}, col {}", self.line, self.column)
-    }
 }

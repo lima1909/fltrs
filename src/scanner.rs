@@ -71,7 +71,7 @@ impl<'a> Scanner<'a> {
         self.ptr += count;
 
         match cf {
-            ControlFlow::Break(msg) if msg.is_some() => Err(self.parse_err(count, &msg.unwrap())),
+            ControlFlow::Break(msg) if msg.is_some() => Err(self.parse_err(&msg.unwrap())),
             _ => Ok(String::from_iter(&self.inner[(self.ptr - count)..self.ptr])),
         }
     }
@@ -114,9 +114,7 @@ impl<'a> Scanner<'a> {
 
                 self.ptr += count;
                 if !found {
-                    return Err(
-                        self.parse_err(count, &format!("missing closing character: '{}'", end))
-                    );
+                    return Err(self.parse_err(&format!("missing closing character: '{}'", end)));
                 }
 
                 if !self.is_done() {
@@ -124,7 +122,7 @@ impl<'a> Scanner<'a> {
                 }
                 Ok(result)
             }
-            _ => Err(self.parse_err(0, &format!("expected character: '{}' not found", begin))),
+            _ => Err(self.parse_err(&format!("expected character: '{}' not found", begin))),
         }
     }
 
@@ -149,11 +147,10 @@ impl<'a> Scanner<'a> {
         Location { line, column }
     }
 
-    pub(crate) fn parse_err(&self, len: usize, expected: &str) -> ParseError {
+    pub(crate) fn parse_err(&self, expected: &str) -> ParseError {
         ParseError(
             Span {
                 input: self.input,
-                len,
                 location: self.location(),
             },
             expected.into(),
@@ -240,9 +237,9 @@ mod test {
         );
     }
 
-    #[test_case("fo2o", ParseError(Span {input: "fo2o",len:3,location: Location{ line:1, column:3}}, "is not alphabetic".into(),))]
-    #[test_case("2foo", ParseError(Span {input: "2foo",len:1,location: Location{ line:1, column:1}}, "is not alphabetic".into(),))]
-    #[test_case("foo2", ParseError(Span {input: "foo2",len:4,location: Location{ line:1, column:4}}, "is not alphabetic".into(),))]
+    #[test_case("fo2o", ParseError(Span {input: "fo2o",location: Location{ line:1, column:3}}, "is not alphabetic".into(),))]
+    #[test_case("2foo", ParseError(Span {input: "2foo",location: Location{ line:1, column:1}}, "is not alphabetic".into(),))]
+    #[test_case("foo2", ParseError(Span {input: "foo2",location: Location{ line:1, column:4}}, "is not alphabetic".into(),))]
     fn take_while_with_err(input: &str, err: ParseError) {
         let mut s = Scanner::new(input);
         assert_eq!(
@@ -256,6 +253,26 @@ mod test {
             })
             .err()
             .unwrap()
+        );
+    }
+
+    #[test_case("fo2o", "'fo2o' error at ln 1, col 3: is not alphabetic")]
+    #[test_case("2foo", "'2foo' error at ln 1, col 1: is not alphabetic")]
+    #[test_case("foo2", "'foo2' error at ln 1, col 4: is not alphabetic")]
+    fn take_while_with_err_msg(input: &str, err_msg: &str) {
+        let mut s = Scanner::new(input);
+        assert_eq!(
+            err_msg,
+            s.take_while(|_pos: usize, c: &char| {
+                if c.is_alphabetic() {
+                    Ok(true)
+                } else {
+                    Err("is not alphabetic")
+                }
+            })
+            .err()
+            .unwrap()
+            .to_string()
         );
     }
 
@@ -276,11 +293,27 @@ mod test {
         assert_eq!(expect, s.take_surround(&'(', &')').unwrap());
     }
 
-    #[test_case("(name (5)", ParseError(Span {input: "(name (5)",len:8,location: Location{ line:1, column:9}}, "missing closing character: ')'".into(),))]
-    #[test_case("(name ", ParseError(Span {input: "(name ",len:5,location: Location{ line:1, column:6}}, "missing closing character: ')'".into(),))]
-    #[test_case("age)", ParseError(Span {input: "age)",len:0,location: Location{ line:1, column:1}}, "expected character: '(' not found".into(),))]
+    #[test_case("(name (5)", ParseError(Span {input: "(name (5)",location: Location{ line:1, column:9}}, "missing closing character: ')'".into(),))]
+    #[test_case("(name ", ParseError(Span {input: "(name ",location: Location{ line:1, column:6}}, "missing closing character: ')'".into(),))]
+    #[test_case("age)", ParseError(Span {input: "age)",location: Location{ line:1, column:1}}, "expected character: '(' not found".into(),))]
     fn take_surround_err(input: &str, err: ParseError) {
         let mut s = Scanner::new(input);
         assert_eq!(err, s.take_surround(&'(', &')').err().unwrap());
+    }
+
+    #[test_case(
+        "(name (5)",
+        "'(name (5)' error at ln 1, col 9: missing closing character: ')'"
+    )]
+    #[test_case(
+        "age)",
+        "'age)' error at ln 1, col 1: expected character: '(' not found"
+    )]
+    fn take_surround_err_msg(input: &str, err_msg: &str) {
+        let mut s = Scanner::new(input);
+        assert_eq!(
+            err_msg,
+            s.take_surround(&'(', &')').err().unwrap().to_string()
+        );
     }
 }
