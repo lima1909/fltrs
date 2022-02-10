@@ -278,6 +278,7 @@ mod test {
 
     #[test_case("(name (5)", ParseError(Span {input: "(name (5)",len:8,location: Location{ line:1, column:9}}, "missing closing character: ')'".into(),))]
     #[test_case("(name ", ParseError(Span {input: "(name ",len:5,location: Location{ line:1, column:6}}, "missing closing character: ')'".into(),))]
+    #[test_case("age)", ParseError(Span {input: "age)",len:0,location: Location{ line:1, column:1}}, "expected character: '(' not found".into(),))]
     fn take_surround_err(input: &str, err: ParseError) {
         let mut s = Scanner::new(input);
         assert_eq!(err, s.take_surround(&'(', &')').err().unwrap());
