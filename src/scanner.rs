@@ -268,11 +268,18 @@ mod test {
         assert_eq!(expect, s.take_surround(&'"', &'"').unwrap());
     }
 
-    #[test_case(r#"(name (5))'"#, "name (5)"; "simple")]
-    #[test_case(r#"(name (5) )'"#, "name (5) "; "with space")]
+    #[test_case(r#"(name (5))"#, "name (5)"; "simple")]
+    #[test_case(r#"(name (5) )"#, "name (5) "; "with space")]
     #[test_case(r#"((7) name (5) )'"#, "(7) name (5) "; "nested")]
     fn take_surround_bracket(input: &str, expect: &str) {
         let mut s = Scanner::new(input);
         assert_eq!(expect, s.take_surround(&'(', &')').unwrap());
+    }
+
+    #[test_case("(name (5)", ParseError(Span {input: "(name (5)",len:8,location: Location{ line:1, column:9}}, "missing closing character: ')'".into(),))]
+    #[test_case("(name ", ParseError(Span {input: "(name ",len:5,location: Location{ line:1, column:6}}, "missing closing character: ')'".into(),))]
+    fn take_surround_err(input: &str, err: ParseError) {
+        let mut s = Scanner::new(input);
+        assert_eq!(err, s.take_surround(&'(', &')').err().unwrap());
     }
 }
