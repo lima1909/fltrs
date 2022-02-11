@@ -6,7 +6,7 @@ use std::ops::ControlFlow;
 
 /// This is the default Result for the Scanner and the Parser.
 /// The return value can be an `Ok(T)` or an error `Err(ParseError)`.
-pub type Result<'i, T> = core::result::Result<T, ParseError<'i>>;
+pub type Result<T> = core::result::Result<T, ParseError>;
 
 pub(crate) struct Scanner<'a> {
     input: &'a str,
@@ -149,7 +149,7 @@ impl<'a> Scanner<'a> {
 
     pub(crate) fn parse_err(&self, err_msg: &str) -> ParseError {
         ParseError {
-            input: self.input,
+            input: self.input.into(),
             location: self.location(),
             err_msg: err_msg.into(),
         }
@@ -235,9 +235,9 @@ mod test {
         );
     }
 
-    #[test_case("fo2o", ParseError{input: "fo2o",location: Location{ line:1, column:3},err_msg: "is not alphabetic".into()};"fo2o")]
-    #[test_case("2foo", ParseError{input: "2foo",location: Location{ line:1, column:1},err_msg: "is not alphabetic".into()};"2foo")]
-    #[test_case("foo2", ParseError{input: "foo2",location: Location{ line:1, column:4},err_msg: "is not alphabetic".into()};"foo2")]
+    #[test_case("fo2o", ParseError{input: "fo2o".into(),location: Location{ line:1, column:3},err_msg: "is not alphabetic".into()};"fo2o")]
+    #[test_case("2foo", ParseError{input: "2foo".into(),location: Location{ line:1, column:1},err_msg: "is not alphabetic".into()};"2foo")]
+    #[test_case("foo2", ParseError{input: "foo2".into(),location: Location{ line:1, column:4},err_msg: "is not alphabetic".into()};"foo2")]
     fn take_while_with_err(input: &str, err: ParseError) {
         let mut s = Scanner::new(input);
         assert_eq!(
@@ -291,9 +291,9 @@ mod test {
         assert_eq!(expect, s.take_surround(&'(', &')').unwrap());
     }
 
-    #[test_case("(name (5)", ParseError{input: "(name (5)",location: Location{ line:1, column:9},err_msg: "missing closing character: ')'".into()};"(name (5)")]
-    #[test_case("(name ", ParseError{input: "(name ",location: Location{ line:1, column:6},err_msg: "missing closing character: ')'".into()};"(name ")]
-    #[test_case("age)", ParseError{input: "age)",location: Location{ line:1, column:1},err_msg: "expected character: '(' not found".into()};"age)")]
+    #[test_case("(name (5)", ParseError{input: "(name (5)".into(), location: Location{ line:1, column:9},err_msg: "missing closing character: ')'".into()};"(name (5)")]
+    #[test_case("(name ", ParseError{input: "(name ".into(), location: Location{ line:1, column:6},err_msg: "missing closing character: ')'".into()};"(name ")]
+    #[test_case("age)", ParseError{input: "age)".into(), location: Location{ line:1, column:1},err_msg: "expected character: '(' not found".into()};"age)")]
     fn take_surround_err(input: &str, err: ParseError) {
         let mut s = Scanner::new(input);
         assert_eq!(err, s.take_surround(&'(', &')').err().unwrap());

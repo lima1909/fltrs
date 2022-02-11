@@ -1,13 +1,13 @@
 use core::fmt::{Display, Formatter, Result};
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ParseError<'i> {
-    pub input: &'i str,
+pub struct ParseError {
+    pub input: String,
     pub location: Location,
     pub err_msg: String,
 }
 
-impl<'i> Display for ParseError<'i> {
+impl Display for ParseError {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(
             f,
@@ -17,7 +17,7 @@ impl<'i> Display for ParseError<'i> {
     }
 }
 
-impl<'i> std::error::Error for ParseError<'i> {
+impl std::error::Error for ParseError {
     fn description(&self) -> &str {
         "Parse Error"
     }
