@@ -74,16 +74,43 @@ mod test {
 
     #[test_case("true", "true", true; "_true")]
     #[test_case("false xyz", "false", false ; "_false")]
-    fn map_check(input: &str, take_input: &str, expect: bool) {
+    fn map_bool(input: &str, take_input: &str, expect: bool) {
         let mut p = Parser::new(input);
         assert_eq!(expect, map::<bool>(take_input)(&mut p).unwrap());
     }
 
     #[test_case(" true", "true", true; "_true")]
     #[test_case("  false", "false", false ; "_false")]
-    fn map_iws_check(input: &str, take_input: &str, expect: bool) {
+    fn map_bool_iws(input: &str, take_input: &str, expect: bool) {
         let mut p = Parser::new(input);
         assert_eq!(expect, iws(&mut p, map::<bool>(take_input)).unwrap());
+    }
+
+    #[test]
+    fn map_f32() {
+        let mut p = Parser::new("4.0");
+        assert_eq!(4.0, map::<f32>("4.0")(&mut p).unwrap());
+    }
+
+    #[test]
+    fn map_i32() {
+        let mut p = Parser::new("42 ");
+        assert_eq!(42, map::<i32>("42")(&mut p).unwrap());
+    }
+
+    #[test]
+    fn map_str() {
+        let mut p = Parser::new("Hello world");
+        assert_eq!(
+            String::from("Hello"),
+            map::<String>("Hello")(&mut p).unwrap()
+        );
+    }
+
+    #[test]
+    fn map_char() {
+        let mut p = Parser::new("X world");
+        assert_eq!('X', map::<char>("X")(&mut p).unwrap());
     }
 
     #[test]
