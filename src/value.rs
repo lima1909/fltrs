@@ -120,7 +120,7 @@ partial_eq_cmp! {
     Number : Number::F64 => f64
 }
 
-impl ::core::cmp::PartialEq<Value> for str {
+impl ::core::cmp::PartialEq<Value> for &str {
     #[inline]
     fn eq(&self, other: &Value) -> bool {
         match other {
@@ -130,7 +130,7 @@ impl ::core::cmp::PartialEq<Value> for str {
     }
 }
 
-impl ::core::cmp::PartialOrd<Value> for str {
+impl ::core::cmp::PartialOrd<Value> for &str {
     #[inline]
     fn partial_cmp(&self, other: &Value) -> Option<::core::cmp::Ordering> {
         match other {
@@ -191,8 +191,8 @@ mod test {
         assert!(String::from("foo") > String::from("bar"));
         assert!(String::from("foo") > Value::String("bar".into()));
 
-        assert!(*"foo" == Value::String("foo".into()));
-        assert!("foo" > &Value::String("bar".into()));
+        assert!("foo" == Value::String("foo".into()));
+        assert!("foo" > Value::String("bar".into()));
 
         assert_eq!("foo".to_string(), Value::String("foo".into()).to_string());
     }
