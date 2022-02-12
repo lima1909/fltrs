@@ -2,7 +2,7 @@
 
 // use crate::operator::Operators;
 use crate::scanner::{Result, Scanner};
-use crate::value::Number;
+use crate::value::{Number, Value};
 
 use std::{
     ops::{Deref, DerefMut},
@@ -39,7 +39,32 @@ impl<'a> DerefMut for Parser<'a> {
     }
 }
 
-// --------- Parser implementations ----------
+///////////////////////////////////////////////////////////////////////////////
+// Parser implementations
+///////////////////////////////////////////////////////////////////////////////
+
+pub(crate) fn value() -> impl FnMut(&mut Parser) -> Result<Value> {
+    |parser: &mut Parser| match parser.s.look() {
+        Some(c) => match c {
+            // '"' => Ok(Value::String(parser.take_surround(&'"', &'"')?)),
+            // '\'' => {
+            //     let r = parser.take_surround(&'\'', &'\'')?;
+            //     if r.len() != 1 {
+            //         return Err(
+            //             parser.parse_err(&format!("expected char len is 1 not {}", r.len(),))
+            //         );
+            //     }
+            //     Ok(Value::Char(r.chars().next().unwrap()))
+            // }
+            't' => Ok(Value::Bool(map("true")(parser)?)),
+            'f' => Ok(Value::Bool(map("false")(parser)?)),
+            '-' | '0'..='9' => Ok(Value::Number(number()(parser)?)),
+            _ => Err(parser.parse_err(&format!("unexpected char '{}' for a valid Value", c))),
+        },
+        None => Err(parser.parse_err("unexpected end")),
+    }
+}
+
 #[inline]
 pub(crate) fn number() -> impl FnMut(&mut Parser) -> Result<Number> {
     |parser: &mut Parser| {
@@ -102,7 +127,7 @@ where
             V::from_str(input)
                 .map_err(|_| parser.parse_err(&format!("unexpected type for value: '{}'", input)))
         } else {
-            Err(parser.parse_err(&format!("input: '{}' not found", input)))
+            Err(parser.parse_err(&format!("expected input: '{}' not found", input)))
         }
     }
 }
@@ -161,13 +186,13 @@ mod test {
             ParseError {
                 input: "abc".into(),
                 location: Location { line: 1, column: 1 },
-                err_msg: "input: 'true' not found".into()
+                err_msg: "expected input: 'true' not found".into()
             },
             map::<bool>("true")(&mut p).err().unwrap()
         );
 
         assert_eq!(
-            "'abc' error at ln 1, col 1: input: 'true' not found",
+            "'abc' error at ln 1, col 1: expected input: 'true' not found",
             map::<bool>("true")(&mut p).err().unwrap().to_string()
         );
     }
@@ -207,5 +232,20 @@ mod test {
     fn number_err(input: &str, err: ParseError) {
         let mut p = Parser::new(input);
         assert_eq!(err, number()(&mut p).err().unwrap());
+    }
+
+    #[test_case("240 as u8", Value::Number(Number::U8(240)) ; "240 as u8")]
+    #[test_case("true", Value::Bool(true) ; "true_val")]
+    #[test_case("false", Value::Bool(false) ; "false_al")]
+    fn value_check(input: &str, expect: Value) {
+        let mut p = Parser::new(input);
+        assert_eq!(expect, value()(&mut p).unwrap());
+    }
+
+    #[test_case("foo", ParseError {input: "foo".into(),location: Location { line: 1, column: 1},err_msg: "expected input: 'false' not found".into()} ; "foo not false")]
+    #[test_case("bar", ParseError {input: "bar".into(),location: Location { line: 1, column: 1},err_msg: "unexpected char 'b' for a valid Value".into()} ; "bar not bool")]
+    fn value_err(input: &str, err: ParseError) {
+        let mut p = Parser::new(input);
+        assert_eq!(err, value()(&mut p).err().unwrap());
     }
 }
