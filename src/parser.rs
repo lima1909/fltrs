@@ -1,6 +1,6 @@
 #![allow(dead_code)] // TODO: remove this
 
-// use crate::operator::Operators;
+use crate::operator::Operators;
 use crate::scanner::{Result, Scanner};
 use crate::value::{Number, Value};
 
@@ -11,7 +11,7 @@ use std::{
 
 pub(crate) struct Parser<'a> {
     s: Scanner<'a>,
-    // ops: Operators<>,
+    ops: Operators<bool>,
     // ors: Option<Ors>,
 }
 
@@ -19,7 +19,7 @@ impl<'a> Parser<'a> {
     pub(crate) fn new(input: &'a str) -> Self {
         Parser {
             s: Scanner::new(input),
-            // ops: vec!["=", "!=", "<", ">"],
+            ops: Operators::default(),
             // ors: None,
         }
     }
@@ -42,6 +42,16 @@ impl<'a> DerefMut for Parser<'a> {
 ///////////////////////////////////////////////////////////////////////////////
 // Parser implementations
 ///////////////////////////////////////////////////////////////////////////////
+
+pub(crate) fn op() -> impl FnMut(&mut Parser) -> Result<String> {
+    |parser: &mut Parser| {
+        let op_str = parser.take_while_is_not_ws()?;
+        if parser.ops.is_valid(&op_str) {
+            return Ok(op_str);
+        }
+        Err(parser.parse_err(&format!("'{op_str}' is not a valid filter operation")))
+    }
+}
 
 pub(crate) fn path() -> impl FnMut(&mut Parser) -> Result<String> {
     |parser: &mut Parser| parser.s.take_while(is_valid_path)
@@ -113,7 +123,7 @@ pub(crate) fn with_as() -> impl FnMut(&mut Parser) -> Result<String> {
     |parser: &mut Parser| {
         if parser.take("as") {
             let _ = parser.take_while_ws();
-            parser.take_while(|_pos: usize, c: &char| Ok(!c.is_whitespace()))
+            parser.take_while_is_not_ws()
         } else {
             Ok(String::new())
         }
@@ -283,5 +293,20 @@ mod test {
     fn path_err(input: &str, err: ParseError) {
         let mut p = Parser::new(input);
         assert_eq!(err, path()(&mut p).err().unwrap());
+    }
+
+    #[test_case("=", "="; "eq")]
+    #[test_case(">=", ">="; "ge")]
+    #[test_case("len", "len")]
+    #[test_case("starts_with", "starts_with")]
+    fn op_check(input: &str, expect: &str) {
+        let mut p = Parser::new(input);
+        assert_eq!(expect, op()(&mut p).unwrap());
+    }
+
+    #[test_case("foo", ParseError {input: "foo".into(),location: Location { line: 1, column: 3},err_msg: "'foo' is not a valid filter operation".into()} ; "foo")]
+    fn op_err(input: &str, err: ParseError) {
+        let mut p = Parser::new(input);
+        assert_eq!(err, op()(&mut p).err().unwrap());
     }
 }

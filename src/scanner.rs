@@ -77,6 +77,11 @@ impl<'a> Scanner<'a> {
     }
 
     /// read until the current char is NOT a whitespaces
+    pub(crate) fn take_while_is_not_ws(&mut self) -> Result<String> {
+        self.take_while(|_pos: usize, c: &char| Ok(!c.is_whitespace()))
+    }
+
+    /// read until the current char is a whitespaces
     pub(crate) fn take_while_ws(&mut self) -> Result<usize> {
         Ok(self
             .take_while(|_pos: usize, c: &char| Ok(c.is_whitespace()))?
@@ -220,6 +225,14 @@ mod test {
     fn take_while_ws(input: &str, removed_chars: usize) {
         let mut s = Scanner::new(input);
         assert_eq!(Ok(removed_chars), s.take_while_ws());
+    }
+
+    #[test_case("foo ", "foo")]
+    #[test_case("foo \n", "foo")]
+    #[test_case("foo \t", "foo")]
+    fn take_while_not_ws(input: &str, expect: &str) {
+        let mut s = Scanner::new(input);
+        assert_eq!(Ok(expect.into()), s.take_while_is_not_ws());
     }
 
     #[test_case("foo ", "foo")]
