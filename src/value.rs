@@ -1,7 +1,7 @@
-#![allow(dead_code)] // TODO: remove this
-
 use core::fmt::Display;
+use core::str::FromStr;
 
+#[derive(PartialEq, PartialOrd, Debug)]
 pub enum Value {
     Char(char),
     String(String),
@@ -20,6 +20,7 @@ impl Display for Value {
     }
 }
 
+#[derive(PartialEq, PartialOrd, Debug)]
 pub enum Number {
     F32(f32),
     F64(f64),
@@ -34,6 +35,64 @@ pub enum Number {
     U64(u64),
     U128(u128),
     Usize(usize),
+}
+
+impl Number {
+    #[inline]
+    pub(crate) fn default(val: &str) -> core::result::Result<Self, String> {
+        if val.contains('.') {
+            Number::try_from_as("f64", val)
+        } else {
+            Number::try_from_as("i32", val)
+        }
+    }
+
+    #[inline]
+    pub fn try_from_as(as_type: &str, val: &str) -> core::result::Result<Self, String> {
+        match as_type {
+            "f32" => Ok(Number::F32(
+                f32::from_str(val).map_err(|err| err.to_string())?,
+            )),
+            "f64" => Ok(Number::F64(
+                f64::from_str(val).map_err(|err| err.to_string())?,
+            )),
+            "i8" => Ok(Number::I8(
+                i8::from_str(val).map_err(|err| err.to_string())?,
+            )),
+            "i16" => Ok(Number::I16(
+                i16::from_str(val).map_err(|err| err.to_string())?,
+            )),
+            "i32" => Ok(Number::I32(
+                i32::from_str(val).map_err(|err| err.to_string())?,
+            )),
+            "i64" => Ok(Number::I64(
+                i64::from_str(val).map_err(|err| err.to_string())?,
+            )),
+            "i128" => Ok(Number::I128(
+                i128::from_str(val).map_err(|err| err.to_string())?,
+            )),
+            "u8" => Ok(Number::U8(
+                u8::from_str(val).map_err(|err| err.to_string())?,
+            )),
+            "u16" => Ok(Number::U16(
+                u16::from_str(val).map_err(|err| err.to_string())?,
+            )),
+            "u32" => Ok(Number::U32(
+                u32::from_str(val).map_err(|err| err.to_string())?,
+            )),
+            "u64" => Ok(Number::U64(
+                u64::from_str(val).map_err(|err| err.to_string())?,
+            )),
+            "u128" => Ok(Number::U128(
+                u128::from_str(val).map_err(|err| err.to_string())?,
+            )),
+            "usize" => Ok(Number::Usize(
+                usize::from_str(val).map_err(|err| err.to_string())?,
+            )),
+
+            _ => Err(String::from("is not an valid 'as type' for a number")),
+        }
+    }
 }
 
 impl Display for Number {
@@ -204,5 +263,27 @@ mod test {
         assert!('Y' > Value::Char('X'));
 
         assert_eq!('Z'.to_string(), Value::Char('Z').to_string());
+    }
+
+    #[test]
+    fn number_default() {
+        assert_eq!(0, Number::default("0").unwrap());
+        assert_eq!(0.1, Number::default("0.1").unwrap());
+    }
+
+    #[test]
+    fn number_try_from_as() {
+        for as_type in [
+            "f32", "f64", "i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128",
+            "usize",
+        ] {
+            Number::try_from_as(as_type, "0").unwrap();
+        }
+    }
+
+    #[test]
+    fn number_try_from_as_err() {
+        Number::try_from_as("foo", "0").err().unwrap();
+        Number::try_from_as("i32", "a").err().unwrap();
     }
 }

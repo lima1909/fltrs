@@ -2,6 +2,7 @@
 
 // use crate::operator::Operators;
 use crate::scanner::{Result, Scanner};
+use crate::value::Number;
 
 use std::{
     ops::{Deref, DerefMut},
@@ -35,6 +36,46 @@ impl<'a> Deref for Parser<'a> {
 impl<'a> DerefMut for Parser<'a> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.s
+    }
+}
+
+// --------- Parser implementations ----------
+#[inline]
+pub(crate) fn number() -> impl FnMut(&mut Parser) -> Result<Number> {
+    |parser: &mut Parser| {
+        let n_str = parser.take_while(is_number)?;
+        let as_type = iws(parser, with_as())?;
+        if as_type.is_empty() {
+            return Number::default(&n_str).map_err(|err_str| parser.parse_err(&err_str));
+        }
+
+        Number::try_from_as(&as_type, &n_str)
+            .map_err(|err_str| parser.parse_err(&format!("'{as_type}' {err_str}")))
+    }
+}
+
+#[inline]
+pub(crate) fn is_number(pos: usize, c: &char) -> core::result::Result<bool, &str> {
+    if c.is_whitespace() {
+        Ok(false)
+    } else if pos == 0 && !(c.is_numeric() || c.eq(&'-')) {
+        Err("expected numeric character or a minus")
+    } else if pos != 0 && !(c.is_numeric() || c.eq(&'.')) {
+        Err("expected numeric character or a dot")
+    } else {
+        Ok(true)
+    }
+}
+
+#[inline]
+pub(crate) fn with_as() -> impl FnMut(&mut Parser) -> Result<String> {
+    |parser: &mut Parser| {
+        if parser.take("as") {
+            let _ = parser.take_while_ws();
+            parser.take_while(|_pos: usize, c: &char| Ok(!c.is_whitespace()))
+        } else {
+            Ok(String::new())
+        }
     }
 }
 
@@ -129,5 +170,42 @@ mod test {
             "'abc' error at ln 1, col 1: input: 'true' not found",
             map::<bool>("true")(&mut p).err().unwrap().to_string()
         );
+    }
+
+    #[test_case("as i32", "i32")]
+    #[test_case("as f64", "f64")]
+    #[test_case("as usize", "usize")]
+    #[test_case("as foo", "foo")]
+    #[test_case("foo", "")]
+    #[test_case("as ", "")]
+    #[test_case(" ", "" ; "space")]
+    #[test_case("", "" ; "empty")]
+    fn with_as_check(input: &str, expect: &str) {
+        let mut p = Parser::new(input);
+        assert_eq!(expect, with_as()(&mut p).unwrap());
+    }
+
+    #[test_case("0", Number::I32(0) ; "0")]
+    #[test_case("01", Number::I32(1) ; "01")]
+    #[test_case("002", Number::I32(2) ; "002")]
+    #[test_case("0.1", Number::F64(0.1) ; "0.1")]
+    #[test_case("1.34", Number::F64(1.34) ; "1.34")]
+    #[test_case("-1.34", Number::F64(-1.34) ; "minus 1.34")]
+    #[test_case("240", Number::I32(240) ; "240")]
+    #[test_case("-240", Number::I32(-240); "minus 240")]
+    #[test_case("-1.34 as f32", Number::F32(-1.34) ; "minus 1.34 as f32")]
+    #[test_case("240 as u8", Number::U8(240) ; "240 as u8")]
+    fn number_check(input: &str, expect: Number) {
+        let mut p = Parser::new(input);
+        assert_eq!(expect, number()(&mut p).unwrap());
+    }
+
+    #[test_case("a1.34", ParseError {input: "a1.34".into(),location: Location { line: 1, column: 1 },err_msg: "expected numeric character or a minus".into()} ; "a1.34")]
+    #[test_case("1a34", ParseError {input: "1a34".into(),location: Location { line: 1, column: 2 },err_msg: "expected numeric character or a dot".into()} ; "1a34")]
+    #[test_case("1.34 as foo", ParseError {input: "1.34 as foo".into(),location: Location { line: 1, column: 11 },err_msg: "'foo' is not an valid 'as type' for a number".into()} ; "1.34 as foo")]
+    #[test_case("240 as i8", ParseError {input: "240 as i8".into(),location: Location { line: 1, column: 9},err_msg: "'i8' number too large to fit in target type".into()} ; "240 as i8")]
+    fn number_err(input: &str, err: ParseError) {
+        let mut p = Parser::new(input);
+        assert_eq!(err, number()(&mut p).err().unwrap());
     }
 }
