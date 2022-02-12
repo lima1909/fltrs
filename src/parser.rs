@@ -43,6 +43,22 @@ impl<'a> DerefMut for Parser<'a> {
 // Parser implementations
 ///////////////////////////////////////////////////////////////////////////////
 
+pub(crate) fn path() -> impl FnMut(&mut Parser) -> Result<String> {
+    |parser: &mut Parser| parser.s.take_while(is_valid_path)
+}
+
+pub(crate) fn is_valid_path(pos: usize, c: &char) -> core::result::Result<bool, &str> {
+    if c.is_whitespace() {
+        Ok(false)
+    } else if pos == 0 && !c.is_alphabetic() {
+        Err("the first letter must be an alphabeic")
+    } else if !(c.is_alphanumeric() || '_'.eq(c) || '.'.eq(c)) {
+        Err("the letter must be alphanumeric, '_' or '.'")
+    } else {
+        Ok(true)
+    }
+}
+
 pub(crate) fn value() -> impl FnMut(&mut Parser) -> Result<Value> {
     |parser: &mut Parser| match parser.s.look() {
         Some(c) => match c {
@@ -251,5 +267,21 @@ mod test {
     fn value_err(input: &str, err: ParseError) {
         let mut p = Parser::new(input);
         assert_eq!(err, value()(&mut p).err().unwrap());
+    }
+
+    #[test_case("name", "name")]
+    #[test_case("name1", "name1")]
+    #[test_case("na_me", "na_me")]
+    #[test_case("cars.name", "cars.name")]
+    fn path_check(input: &str, expect: &str) {
+        let mut p = Parser::new(input);
+        assert_eq!(expect, path()(&mut p).unwrap());
+    }
+
+    #[test_case("1name", ParseError {input: "1name".into(),location: Location { line: 1, column: 1},err_msg: "the first letter must be an alphabeic".into()} ; "first letter")]
+    #[test_case("na/me", ParseError {input: "na/me".into(),location: Location { line: 1, column: 3},err_msg: "the letter must be alphanumeric, '_' or '.'".into()} ; "slash in name")]
+    fn path_err(input: &str, err: ParseError) {
+        let mut p = Parser::new(input);
+        assert_eq!(err, path()(&mut p).err().unwrap());
     }
 }
