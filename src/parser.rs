@@ -46,16 +46,16 @@ impl<'a> DerefMut for Parser<'a> {
 pub(crate) fn value() -> impl FnMut(&mut Parser) -> Result<Value> {
     |parser: &mut Parser| match parser.s.look() {
         Some(c) => match c {
-            // '"' => Ok(Value::String(parser.take_surround(&'"', &'"')?)),
-            // '\'' => {
-            //     let r = parser.take_surround(&'\'', &'\'')?;
-            //     if r.len() != 1 {
-            //         return Err(
-            //             parser.parse_err(&format!("expected char len is 1 not {}", r.len(),))
-            //         );
-            //     }
-            //     Ok(Value::Char(r.chars().next().unwrap()))
-            // }
+            '"' => Ok(Value::String(parser.take_surround(&'"', &'"')?)),
+            '\'' => {
+                let r = parser.take_surround(&'\'', &'\'')?;
+                if r.len() != 1 {
+                    return Err(
+                        parser.parse_err(&format!("expected char len is 1 not {}", r.len(),))
+                    );
+                }
+                Ok(Value::Char(r.chars().next().unwrap()))
+            }
             't' => Ok(Value::Bool(map("true")(parser)?)),
             'f' => Ok(Value::Bool(map("false")(parser)?)),
             '-' | '0'..='9' => Ok(Value::Number(number()(parser)?)),
@@ -236,7 +236,9 @@ mod test {
 
     #[test_case("240 as u8", Value::Number(Number::U8(240)) ; "240 as u8")]
     #[test_case("true", Value::Bool(true) ; "true_val")]
-    #[test_case("false", Value::Bool(false) ; "false_al")]
+    #[test_case("false", Value::Bool(false) ; "false_val")]
+    #[test_case(r#""false""#, Value::String("false".into()) ; "false_string_val")]
+    #[test_case(r#"'X'"#, Value::Char('X'.into()) ; "X_char_val")]
     fn value_check(input: &str, expect: Value) {
         let mut p = Parser::new(input);
         assert_eq!(expect, value()(&mut p).unwrap());
@@ -244,6 +246,8 @@ mod test {
 
     #[test_case("foo", ParseError {input: "foo".into(),location: Location { line: 1, column: 1},err_msg: "expected input: 'false' not found".into()} ; "foo not false")]
     #[test_case("bar", ParseError {input: "bar".into(),location: Location { line: 1, column: 1},err_msg: "unexpected char 'b' for a valid Value".into()} ; "bar not bool")]
+    #[test_case(r#""bar"#, ParseError {input: r#""bar"#.into(),location: Location { line: 1, column: 4},err_msg: "missing closing character: '\"'".into()} ; "string not closing bracket")]
+    #[test_case(r#"'bar'"#, ParseError {input: r#"'bar'"#.into(),location: Location { line: 1, column: 5},err_msg: "expected char len is 1 not 3".into()} ; "char to long")]
     fn value_err(input: &str, err: ParseError) {
         let mut p = Parser::new(input);
         assert_eq!(err, value()(&mut p).err().unwrap());
