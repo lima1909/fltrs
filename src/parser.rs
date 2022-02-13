@@ -2,7 +2,7 @@
 
 use crate::operator::Operators;
 use crate::scanner::{Result, Scanner};
-use crate::value::{Number, Value};
+use crate::value::{Number, Predicate, Value};
 
 use std::{
     ops::{Deref, DerefMut},
@@ -43,10 +43,32 @@ impl<'a> DerefMut for Parser<'a> {
 // Parser implementations
 ///////////////////////////////////////////////////////////////////////////////
 
+pub(crate) fn predicate() -> impl FnMut(&mut Parser) -> Result<Predicate> {
+    |parser: &mut Parser| {
+        let op_str;
+        let mut p = None;
+
+        match iws(parser, op()) {
+            Ok(s) => op_str = s,
+            Err(_) => {
+                p = Some(iws(parser, path())?);
+                op_str = iws(parser, op())?;
+            }
+        }
+
+        Ok(Predicate {
+            path: p,
+            op: op_str,
+            value: iws(parser, value())?,
+        })
+    }
+}
+
 pub(crate) fn op() -> impl FnMut(&mut Parser) -> Result<String> {
     |parser: &mut Parser| {
-        let op_str = parser.take_while_is_not_ws()?;
+        let op_str = parser.look_while(is_not_ws)?;
         if parser.ops.is_valid(&op_str) {
+            parser.take(&op_str);
             return Ok(op_str);
         }
         Err(parser.parse_err(&format!("'{op_str}' is not a valid filter operation")))
@@ -123,7 +145,7 @@ pub(crate) fn with_as() -> impl FnMut(&mut Parser) -> Result<String> {
     |parser: &mut Parser| {
         if parser.take("as") {
             let _ = parser.take_while_ws();
-            parser.take_while_is_not_ws()
+            parser.take_while(is_not_ws)
         } else {
             Ok(String::new())
         }
@@ -156,6 +178,11 @@ where
             Err(parser.parse_err(&format!("expected input: '{}' not found", input)))
         }
     }
+}
+
+#[inline]
+pub(crate) fn is_not_ws(_pos: usize, c: &char) -> core::result::Result<bool, &str> {
+    Ok(!c.is_whitespace())
 }
 
 #[cfg(test)]
@@ -304,9 +331,23 @@ mod test {
         assert_eq!(expect, op()(&mut p).unwrap());
     }
 
-    #[test_case("foo", ParseError {input: "foo".into(),location: Location { line: 1, column: 3},err_msg: "'foo' is not a valid filter operation".into()} ; "foo")]
+    #[test_case("foo", ParseError {input: "foo".into(),location: Location { line: 1, column: 1},err_msg: "'foo' is not a valid filter operation".into()} ; "foo")]
     fn op_err(input: &str, err: ParseError) {
         let mut p = Parser::new(input);
         assert_eq!(err, op()(&mut p).err().unwrap());
+    }
+
+    #[test_case("= 7", Predicate{path: None, op: String::from("="), value: Value::Number(Number::I32(7))}; "eq 7")]
+    #[test_case("name len 3", Predicate{path: Some(String::from("name")), op: String::from("len"), value: Value::Number(Number::I32(3))}; "name len 3")]
+    fn predicate_check(input: &str, expect: Predicate) {
+        let mut p = Parser::new(input);
+        assert_eq!(expect, predicate()(&mut p).unwrap());
+    }
+
+    #[test_case("age 3", ParseError {input: "age 3".into(),location: Location { line: 1, column: 4},err_msg: "'3' is not a valid filter operation".into()} ; "age 3")]
+    #[test_case(r#"name = "Paul "#, ParseError {input: r#"name = "Paul "#.into(),location: Location { line: 1, column: 13},err_msg: "missing closing character: '\"'".into()} ; r#"name = "Paul "#)]
+    fn predicate_err(input: &str, err: ParseError) {
+        let mut p = Parser::new(input);
+        assert_eq!(err, predicate()(&mut p).err().unwrap());
     }
 }

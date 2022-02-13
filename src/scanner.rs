@@ -33,23 +33,9 @@ impl<'a> Scanner<'a> {
         self.it().take(input.len()).copied().eq(input.chars())
     }
 
-    /// get an iterator from the current position
-    pub(crate) fn it(&mut self) -> impl Iterator<Item = &char> {
-        self.inner.iter().skip(self.ptr)
-    }
-
-    /// if the input is find, then take the len of the input (inc pointer += input.len())
-    pub(crate) fn take(&mut self, input: &str) -> bool {
-        if self.look_str(input) {
-            self.ptr += input.len();
-            return true;
-        }
-        false
-    }
-
-    /// take all chars for the given function: `f` gets true
+    /// look all chars for the given function: `f` gets true (wihtout inc the pointer)
     /// name__x -> name, (rest: __x)
-    pub(crate) fn take_while(
+    pub(crate) fn look_while(
         &mut self,
         f: fn(usize, &char) -> core::result::Result<bool, &str>,
     ) -> Result<String> {
@@ -68,17 +54,39 @@ impl<'a> Scanner<'a> {
                 ControlFlow::Break(Some(String::from(msg)))
             }
         });
-        self.ptr += count;
 
         match cf {
-            ControlFlow::Break(msg) if msg.is_some() => Err(self.parse_err(&msg.unwrap())),
-            _ => Ok(String::from_iter(&self.inner[(self.ptr - count)..self.ptr])),
+            ControlFlow::Break(msg) if msg.is_some() => {
+                self.ptr += count;
+                Err(self.parse_err(&msg.unwrap()))
+            }
+            _ => Ok(String::from_iter(&self.inner[self.ptr..(self.ptr + count)])),
         }
     }
 
-    /// read until the current char is NOT a whitespaces
-    pub(crate) fn take_while_is_not_ws(&mut self) -> Result<String> {
-        self.take_while(|_pos: usize, c: &char| Ok(!c.is_whitespace()))
+    /// get an iterator from the current position
+    pub(crate) fn it(&mut self) -> impl Iterator<Item = &char> {
+        self.inner.iter().skip(self.ptr)
+    }
+
+    /// if the input is find, then take the len of the input (inc pointer += input.len())
+    pub(crate) fn take(&mut self, input: &str) -> bool {
+        if self.look_str(input) {
+            self.ptr += input.len();
+            return true;
+        }
+        false
+    }
+
+    /// take all chars for the given function: `f` gets true (inc the pointer)
+    /// name__x -> name, (rest: __x)
+    pub(crate) fn take_while(
+        &mut self,
+        f: fn(usize, &char) -> core::result::Result<bool, &str>,
+    ) -> Result<String> {
+        let s = self.look_while(f)?;
+        self.ptr += s.len();
+        Ok(s)
     }
 
     /// read until the current char is a whitespaces
@@ -164,6 +172,7 @@ impl<'a> Scanner<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::parser::is_not_ws;
     use test_case::test_case;
 
     #[test_case("foo",  'f', 0  ; "look on first char: f")]
@@ -230,9 +239,9 @@ mod test {
     #[test_case("foo ", "foo")]
     #[test_case("foo \n", "foo")]
     #[test_case("foo \t", "foo")]
-    fn take_while_not_ws(input: &str, expect: &str) {
+    fn look_while(input: &str, expect: &str) {
         let mut s = Scanner::new(input);
-        assert_eq!(Ok(expect.into()), s.take_while_is_not_ws());
+        assert_eq!(Ok(expect.into()), s.look_while(is_not_ws));
     }
 
     #[test_case("foo ", "foo")]
