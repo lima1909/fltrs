@@ -144,7 +144,7 @@ pub(crate) fn is_number(pos: usize, c: &char) -> core::result::Result<bool, &str
 pub(crate) fn with_as() -> impl FnMut(&mut Parser) -> Result<String> {
     |parser: &mut Parser| {
         if parser.take("as") {
-            let _ = parser.take_while_ws();
+            let _ = parser.take_while(is_ws);
             parser.take_while(is_not_ws)
         } else {
             Ok(String::new())
@@ -158,9 +158,9 @@ pub(crate) fn iws<R>(
     parser: &mut Parser,
     mut f: impl FnMut(&mut Parser) -> Result<R>,
 ) -> Result<R> {
-    parser.take_while_ws()?;
+    parser.take_while(is_ws)?;
     let r = f(parser)?;
-    parser.take_while_ws()?;
+    parser.take_while(is_ws)?;
     Ok(r)
 }
 
@@ -178,6 +178,11 @@ where
             Err(parser.parse_err(&format!("expected input: '{}' not found", input)))
         }
     }
+}
+
+#[inline]
+pub(crate) fn is_ws(_pos: usize, c: &char) -> core::result::Result<bool, &str> {
+    Ok(c.is_whitespace())
 }
 
 #[inline]

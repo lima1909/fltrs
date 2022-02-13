@@ -89,13 +89,6 @@ impl<'a> Scanner<'a> {
         Ok(s)
     }
 
-    /// read until the current char is a whitespaces
-    pub(crate) fn take_while_ws(&mut self) -> Result<usize> {
-        Ok(self
-            .take_while(|_pos: usize, c: &char| Ok(c.is_whitespace()))?
-            .len())
-    }
-
     /// take a string between a char like quote: "abx" -> abx
     pub(crate) fn take_surround(&mut self, begin: &char, end: &char) -> Result<String> {
         match self.look() {
@@ -172,7 +165,7 @@ impl<'a> Scanner<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::parser::is_not_ws;
+    use crate::parser::{is_not_ws, is_ws};
     use test_case::test_case;
 
     #[test_case("foo",  'f', 0  ; "look on first char: f")]
@@ -233,7 +226,7 @@ mod test {
     #[test_case(" \t\n foo ",  4 ; "remove 4")]
     fn take_while_ws(input: &str, removed_chars: usize) {
         let mut s = Scanner::new(input);
-        assert_eq!(Ok(removed_chars), s.take_while_ws());
+        assert_eq!(removed_chars, s.take_while(is_ws).unwrap().len());
     }
 
     #[test_case("foo ", "foo")]
