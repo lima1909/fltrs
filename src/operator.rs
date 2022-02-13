@@ -48,10 +48,11 @@ impl<Arg> Operators<Arg> {
 }
 
 fn len<Arg: ToString>(arg: &Arg, v: &Value) -> bool {
-    if let Value::Number(Number::Usize(l)) = v {
-        return arg.to_string().len() == *l;
+    match v {
+        Value::Number(Number::Usize(l)) => arg.to_string().len() == *l,
+        Value::Number(Number::I32(l)) => arg.to_string().len() == *l as usize,
+        _ => false,
     }
-    false
 }
 
 fn starts_with<Arg: ToString>(arg: &Arg, v: &Value) -> bool {

@@ -1,6 +1,21 @@
 use core::fmt::{Display, Formatter, Result};
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct FltrError(pub String);
+
+impl core::fmt::Display for FltrError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for FltrError {
+    fn description(&self) -> &str {
+        "Fltr Error"
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct ParseError {
     pub input: String,
     pub location: Location,
@@ -37,6 +52,7 @@ mod test {
 
     #[test]
     fn impl_send_sync_test() {
+        test_impl_send_sync::<FltrError>();
         test_impl_send_sync::<ParseError>();
     }
 }
