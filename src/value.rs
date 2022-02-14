@@ -1,4 +1,4 @@
-use core::fmt::Display;
+use core::fmt::{Debug, Display};
 use core::str::FromStr;
 
 #[derive(PartialEq, PartialOrd, Debug)]
@@ -34,7 +34,31 @@ impl Display for Value {
     }
 }
 
-#[derive(PartialEq, PartialOrd, Debug)]
+#[derive(Clone, Copy)]
+pub enum RefValue<'a> {
+    String(&'a dyn AsRef<str>),
+    CopyValue(CopyValue),
+}
+
+impl Display for RefValue<'_> {
+    fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RefValue::String(s) => write!(fm, "{}", s.as_ref()),
+            RefValue::CopyValue(c) => write!(fm, "{}", c),
+        }
+    }
+}
+
+impl Debug for RefValue<'_> {
+    fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RefValue::String(s) => write!(fm, "{}", s.as_ref()),
+            RefValue::CopyValue(c) => write!(fm, "{}", c),
+        }
+    }
+}
+
+#[derive(PartialEq, PartialOrd, Debug, Clone, Copy)]
 pub enum CopyValue {
     Char(char),
     Bool(bool),
@@ -53,7 +77,7 @@ impl Display for CopyValue {
     }
 }
 
-#[derive(PartialEq, PartialOrd, Debug)]
+#[derive(PartialEq, PartialOrd, Debug, Clone, Copy)]
 pub enum Number {
     F32(f32),
     F64(f64),
@@ -249,60 +273,41 @@ impl ::core::cmp::PartialOrd<Value> for &str {
     }
 }
 
-#[derive(Clone, Copy)]
-pub enum ValueRef<'a> {
-    String(&'a dyn AsRef<str>),
-    I32(i32),
-}
-
-impl Display for ValueRef<'_> {
-    fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ValueRef::String(s) => write!(fm, "{}", s.as_ref()),
-            ValueRef::I32(i) => write!(fm, "{}", i),
-        }
-    }
-}
-
-impl<'a> From<&'a String> for ValueRef<'a> {
+impl<'a> From<&'a String> for RefValue<'a> {
     fn from(s: &'a String) -> Self {
-        ValueRef::String(s)
+        RefValue::String(s)
     }
 }
 
-impl<'a> From<&'a &str> for ValueRef<'a> {
+impl<'a> From<&'a &str> for RefValue<'a> {
     fn from(s: &'a &str) -> Self {
-        ValueRef::String(s)
+        RefValue::String(s)
     }
 }
 
-impl<'a> From<i32> for ValueRef<'a> {
+impl<'a> From<i32> for RefValue<'a> {
     fn from(i: i32) -> Self {
-        ValueRef::I32(i)
+        RefValue::CopyValue(CopyValue::Number(Number::I32(i)))
     }
 }
 
-impl<'a> ::core::cmp::PartialEq<Value> for ValueRef<'a> {
+impl<'a> ::core::cmp::PartialEq<Value> for RefValue<'a> {
     #[inline]
     fn eq(&self, other: &Value) -> bool {
         match (other, self) {
-            (Value::String(vs), ValueRef::String(vrs)) => vs.eq(vrs.as_ref()),
-            (Value::CopyValue(CopyValue::Number(Number::I32(vi))), ValueRef::I32(vri)) => {
-                vi.eq(vri)
-            }
+            (Value::String(vs), RefValue::String(vrs)) => vs.eq(vrs.as_ref()),
+            (Value::CopyValue(v), RefValue::CopyValue(rv)) => v.eq(rv),
             _ => false,
         }
     }
 }
 
-impl<'a> ::core::cmp::PartialOrd<Value> for ValueRef<'a> {
+impl<'a> ::core::cmp::PartialOrd<Value> for RefValue<'a> {
     #[inline]
     fn partial_cmp(&self, other: &Value) -> Option<::core::cmp::Ordering> {
         match (other, self) {
-            (Value::String(vs), ValueRef::String(vrs)) => vrs.as_ref().partial_cmp(vs),
-            (Value::CopyValue(CopyValue::Number(Number::I32(vi))), ValueRef::I32(vri)) => {
-                vri.partial_cmp(vi)
-            }
+            (Value::String(vs), RefValue::String(vrs)) => vrs.as_ref().partial_cmp(vs),
+            (Value::CopyValue(v), RefValue::CopyValue(rv)) => rv.partial_cmp(v),
             _ => None,
         }
     }
@@ -327,6 +332,15 @@ mod test {
         assert!(10usize == Value::CopyValue(CopyValue::Number(Number::Usize(10))));
         assert!(10 as u32 > Value::CopyValue(CopyValue::Number(Number::U32(9))));
         assert!(10u64 < Value::CopyValue(CopyValue::Number(Number::U64(11))));
+
+        assert!(
+            RefValue::CopyValue(CopyValue::Number(Number::Usize(10)))
+                == Value::CopyValue(CopyValue::Number(Number::Usize(10)))
+        );
+        assert!(
+            RefValue::CopyValue(CopyValue::Number(Number::Usize(20)))
+                > Value::CopyValue(CopyValue::Number(Number::Usize(10)))
+        );
     }
 
     #[test]
@@ -346,6 +360,11 @@ mod test {
         assert!(10.2 == CopyValue::Number(Number::F64(10.2)));
         assert!(10.2 > CopyValue::Number(Number::F64(9.3)));
         assert!(10.2 < Value::CopyValue(CopyValue::Number(Number::F64(11.3))));
+
+        assert!(
+            RefValue::CopyValue(CopyValue::Number(Number::F64(10.2)))
+                < Value::CopyValue(CopyValue::Number(Number::F64(11.3)))
+        );
     }
 
     #[test]
@@ -355,6 +374,10 @@ mod test {
         assert!(true > Value::CopyValue(CopyValue::Bool(false)));
 
         assert_eq!(false.to_string(), CopyValue::Bool(false).to_string());
+
+        assert!(
+            RefValue::CopyValue(CopyValue::Bool(true)) > Value::CopyValue(CopyValue::Bool(false))
+        );
     }
 
     #[test]
@@ -367,6 +390,7 @@ mod test {
         assert!("foo" > Value::String("bar".into()));
 
         assert_eq!("foo".to_string(), Value::String("foo".into()).to_string());
+        assert_eq!(RefValue::String(&"foo"), Value::String("foo".into()));
     }
 
     #[test]
@@ -376,6 +400,8 @@ mod test {
         assert!('Y' > Value::CopyValue(CopyValue::Char('X')));
 
         assert_eq!('Z'.to_string(), CopyValue::Char('Z').to_string());
+
+        assert!(RefValue::CopyValue(CopyValue::Char('Y')) > Value::CopyValue(CopyValue::Char('X')));
     }
 
     #[test]

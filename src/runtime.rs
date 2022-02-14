@@ -2,7 +2,7 @@
 
 use crate::error::FltrError;
 use crate::operator::{OperatorFn, Operators};
-use crate::value::{Predicate, Value, ValueRef};
+use crate::value::{Predicate, RefValue, Value};
 use crate::{PathResolver, Result};
 
 pub trait Executor<'a, Arg> {
@@ -37,11 +37,11 @@ struct PathExec<'a> {
     path: &'a str,
     index: usize,
     value: &'a Value,
-    f: &'a OperatorFn<ValueRef<'a>>,
+    f: &'a OperatorFn<RefValue<'a>>,
 }
 
 impl<'a> PathExec<'a> {
-    pub(crate) fn new(p: &'a Predicate, ops: &'a Operators<ValueRef<'a>>) -> Self {
+    pub(crate) fn new(p: &'a Predicate, ops: &'a Operators<RefValue<'a>>) -> Self {
         Self {
             path: p.path.as_ref().unwrap(),
             index: 0,
@@ -124,7 +124,7 @@ mod test {
             }
         }
 
-        fn value(&self, idx: usize) -> ValueRef {
+        fn value(&self, idx: usize) -> RefValue {
             [(&self.name).into(), (self.ps).into(), (self.size).into()][idx]
         }
     }
