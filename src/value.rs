@@ -179,135 +179,24 @@ macro_rules! partial_eq_cmp {
     };
 }
 
-impl ::core::cmp::PartialEq<Value> for i32 {
-    #[inline]
-    fn eq(&self, other: &Value) -> bool {
-        use self::{CopyValue::*, Number::*, Value::*};
-
-        match other {
-            CopyValue(Number(I32(v))) => self.eq(v),
-            _ => false,
-        }
-    }
-}
-
-impl ::core::cmp::PartialOrd<Value> for i32 {
-    #[inline]
-    fn partial_cmp(&self, other: &Value) -> Option<::core::cmp::Ordering> {
-        use self::{CopyValue::*, Number::*, Value::*};
-
-        match other {
-            CopyValue(Number(I32(v))) => self.partial_cmp(v),
-            _ => None,
-        }
-    }
-}
-
-impl ::core::cmp::PartialEq<Value> for f32 {
-    #[inline]
-    fn eq(&self, other: &Value) -> bool {
-        match other {
-            Value::CopyValue(CopyValue::Number(Number::F32(v))) => self.eq(v),
-            _ => false,
-        }
-    }
-}
-
-impl ::core::cmp::PartialOrd<Value> for f32 {
-    #[inline]
-    fn partial_cmp(&self, other: &Value) -> Option<::core::cmp::Ordering> {
-        match other {
-            Value::CopyValue(CopyValue::Number(Number::F32(v))) => self.partial_cmp(v),
-            _ => None,
-        }
-    }
-}
-
-impl ::core::cmp::PartialEq<Value> for f64 {
-    #[inline]
-    fn eq(&self, other: &Value) -> bool {
-        match other {
-            Value::CopyValue(CopyValue::Number(Number::F64(v))) => self.eq(v),
-            _ => false,
-        }
-    }
-}
-
-impl ::core::cmp::PartialOrd<Value> for f64 {
-    #[inline]
-    fn partial_cmp(&self, other: &Value) -> Option<::core::cmp::Ordering> {
-        match other {
-            Value::CopyValue(CopyValue::Number(Number::F64(v))) => self.partial_cmp(v),
-            _ => None,
-        }
-    }
-}
-
-impl ::core::cmp::PartialEq<Value> for char {
-    #[inline]
-    fn eq(&self, other: &Value) -> bool {
-        match other {
-            Value::CopyValue(CopyValue::Char(v)) => self.eq(v),
-            _ => false,
-        }
-    }
-}
-
-impl ::core::cmp::PartialOrd<Value> for char {
-    #[inline]
-    fn partial_cmp(&self, other: &Value) -> Option<::core::cmp::Ordering> {
-        match other {
-            Value::CopyValue(CopyValue::Char(v)) => self.partial_cmp(v),
-            _ => None,
-        }
-    }
-}
-
-impl ::core::cmp::PartialEq<Value> for bool {
-    #[inline]
-    fn eq(&self, other: &Value) -> bool {
-        match other {
-            Value::CopyValue(CopyValue::Bool(v)) => self.eq(v),
-            _ => false,
-        }
-    }
-}
-
-impl ::core::cmp::PartialOrd<Value> for bool {
-    #[inline]
-    fn partial_cmp(&self, other: &Value) -> Option<::core::cmp::Ordering> {
-        match other {
-            Value::CopyValue(CopyValue::Bool(v)) => self.partial_cmp(v),
-            _ => None,
-        }
-    }
-}
-
-impl ::core::cmp::PartialEq<Value> for String {
-    #[inline]
-    fn eq(&self, other: &Value) -> bool {
-        match other {
-            Value::String(v) => self.eq(v),
-            _ => false,
-        }
-    }
-}
-
-impl ::core::cmp::PartialOrd<Value> for String {
-    #[inline]
-    fn partial_cmp(&self, other: &Value) -> Option<::core::cmp::Ordering> {
-        match other {
-            Value::String(v) => self.partial_cmp(v),
-            _ => None,
-        }
-    }
-}
-
 partial_eq_cmp! {
-    // Value : Value::String => String
-    // Value : Value::CopyValue => CopyValue
-    // Value : Value::CopyValue::Number => i32
-    // Value : Value::CopyValue(CopyValue::Number(Number::I32)) => i32
+    Value : Value::String => String
+
+    Value : Value::CopyValue => char
+    Value : Value::CopyValue => bool
+    Value : Value::CopyValue => usize
+    Value : Value::CopyValue => u8
+    Value : Value::CopyValue => u16
+    Value : Value::CopyValue => u32
+    Value : Value::CopyValue => u64
+    Value : Value::CopyValue => u128
+    Value : Value::CopyValue => i8
+    Value : Value::CopyValue => i16
+    Value : Value::CopyValue => i32
+    Value : Value::CopyValue => i64
+    Value : Value::CopyValue => i128
+    Value : Value::CopyValue => f32
+    Value : Value::CopyValue => f64
 
     CopyValue: CopyValue::Char => char
     CopyValue: CopyValue::Bool => bool
@@ -431,9 +320,13 @@ mod test {
 
         assert_eq!(10.to_string(), Number::I32(10).to_string());
 
-        assert!(10 == CopyValue::Number(Number::I32(10)));
-        assert!(10 > CopyValue::Number(Number::I32(9)));
-        assert!(10 < CopyValue::Number(Number::I32(11)));
+        assert!(10u128 == CopyValue::Number(Number::U128(10)));
+        assert!(10 as u8 > CopyValue::Number(Number::U8(9)));
+        assert!(10u16 < CopyValue::Number(Number::U16(11)));
+
+        assert!(10usize == Value::CopyValue(CopyValue::Number(Number::Usize(10))));
+        assert!(10 as u32 > Value::CopyValue(CopyValue::Number(Number::U32(9))));
+        assert!(10u64 < Value::CopyValue(CopyValue::Number(Number::U64(11))));
     }
 
     #[test]
@@ -452,14 +345,14 @@ mod test {
 
         assert!(10.2 == CopyValue::Number(Number::F64(10.2)));
         assert!(10.2 > CopyValue::Number(Number::F64(9.3)));
-        assert!(10.2 < CopyValue::Number(Number::F64(11.3)));
+        assert!(10.2 < Value::CopyValue(CopyValue::Number(Number::F64(11.3))));
     }
 
     #[test]
     fn cmp_bool() {
         assert!(true == CopyValue::Bool(true));
         assert!(true > false);
-        assert!(true > CopyValue::Bool(false));
+        assert!(true > Value::CopyValue(CopyValue::Bool(false)));
 
         assert_eq!(false.to_string(), CopyValue::Bool(false).to_string());
     }
@@ -480,7 +373,7 @@ mod test {
     fn cmp_char() {
         assert!('X' == CopyValue::Char('X'));
         assert!('Y' > 'X');
-        assert!('Y' > CopyValue::Char('X'));
+        assert!('Y' > Value::CopyValue(CopyValue::Char('X')));
 
         assert_eq!('Z'.to_string(), CopyValue::Char('Z').to_string());
     }
