@@ -2,7 +2,7 @@
 
 use crate::operator::Operators;
 use crate::scanner::{Result, Scanner};
-use crate::value::{Number, Predicate, Value};
+use crate::value::{CopyValue, Number, Predicate, Value};
 
 use std::{
     ops::{Deref, DerefMut},
@@ -102,11 +102,11 @@ pub(crate) fn value() -> impl FnMut(&mut Parser) -> Result<Value> {
                         parser.parse_err(&format!("expected char len is 1 not {}", r.len(),))
                     );
                 }
-                Ok(Value::Char(r.chars().next().unwrap()))
+                Ok(Value::CopyValue(CopyValue::Char(r.chars().next().unwrap())))
             }
-            't' => Ok(Value::Bool(map("true")(parser)?)),
-            'f' => Ok(Value::Bool(map("false")(parser)?)),
-            '-' | '0'..='9' => Ok(Value::Number(number()(parser)?)),
+            't' => Ok(Value::CopyValue(CopyValue::Bool(map("true")(parser)?))),
+            'f' => Ok(Value::CopyValue(CopyValue::Bool(map("false")(parser)?))),
+            '-' | '0'..='9' => Ok(Value::CopyValue(CopyValue::Number(number()(parser)?))),
             _ => Err(parser.parse_err(&format!("unexpected char '{}' for a valid Value", c))),
         },
         None => Err(parser.parse_err("unexpected end")),
@@ -292,11 +292,11 @@ mod test {
         assert_eq!(err, number()(&mut p).err().unwrap());
     }
 
-    #[test_case("240 as u8", Value::Number(Number::U8(240)) ; "240 as u8")]
-    #[test_case("true", Value::Bool(true) ; "true_val")]
-    #[test_case("false", Value::Bool(false) ; "false_val")]
+    #[test_case("240 as u8", Value::CopyValue(CopyValue::Number(Number::U8(240))) ; "240 as u8")]
+    #[test_case("true", Value::CopyValue(CopyValue::Bool(true)) ; "true_val")]
+    #[test_case("false", Value::CopyValue(CopyValue::Bool(false)) ; "false_val")]
     #[test_case(r#""false""#, Value::String("false".into()) ; "false_string_val")]
-    #[test_case(r#"'X'"#, Value::Char('X'.into()) ; "X_char_val")]
+    #[test_case(r#"'X'"#, Value::CopyValue(CopyValue::Char('X'.into())) ; "X_char_val")]
     fn value_check(input: &str, expect: Value) {
         let mut p = Parser::new(input);
         assert_eq!(expect, value()(&mut p).unwrap());
@@ -342,8 +342,8 @@ mod test {
         assert_eq!(err, op()(&mut p).err().unwrap());
     }
 
-    #[test_case("= 7", Predicate{path: None, op: String::from("="), value: Value::Number(Number::I32(7))}; "eq 7")]
-    #[test_case("name len 3", Predicate{path: Some(String::from("name")), op: String::from("len"), value: Value::Number(Number::I32(3))}; "name len 3")]
+    #[test_case("= 7", Predicate{path: None, op: String::from("="), value: Value::CopyValue(CopyValue::Number(Number::I32(7)))}; "eq 7")]
+    #[test_case("name len 3", Predicate{path: Some(String::from("name")), op: String::from("len"), value: Value::CopyValue(CopyValue::Number(Number::I32(3)))}; "name len 3")]
     fn predicate_check(input: &str, expect: Predicate) {
         let mut p = Parser::new(input);
         assert_eq!(expect, predicate()(&mut p).unwrap());
