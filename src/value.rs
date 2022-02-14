@@ -215,6 +215,61 @@ impl ::core::cmp::PartialOrd<Value> for &str {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum ValueRef<'a> {
+    String(&'a dyn AsRef<str>),
+    I32(i32),
+}
+
+impl Display for ValueRef<'_> {
+    fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ValueRef::String(s) => write!(fm, "{}", s.as_ref()),
+            ValueRef::I32(i) => write!(fm, "{}", i),
+        }
+    }
+}
+
+impl<'a> From<&'a String> for ValueRef<'a> {
+    fn from(s: &'a String) -> Self {
+        ValueRef::String(s)
+    }
+}
+
+impl<'a> From<&'a &str> for ValueRef<'a> {
+    fn from(s: &'a &str) -> Self {
+        ValueRef::String(s)
+    }
+}
+
+impl<'a> From<i32> for ValueRef<'a> {
+    fn from(i: i32) -> Self {
+        ValueRef::I32(i)
+    }
+}
+
+impl<'a> ::core::cmp::PartialEq<Value> for ValueRef<'a> {
+    #[inline]
+    fn eq(&self, other: &Value) -> bool {
+        match (other, self) {
+            (Value::String(vs), ValueRef::String(vrs)) => vs.eq(vrs.as_ref()),
+            (Value::Number(Number::I32(vi)), ValueRef::I32(vri)) => vi.eq(vri),
+            _ => false,
+        }
+    }
+}
+
+impl<'a> ::core::cmp::PartialOrd<Value> for ValueRef<'a> {
+    #[inline]
+    fn partial_cmp(&self, other: &Value) -> Option<::core::cmp::Ordering> {
+        match (other, self) {
+            (Value::String(vs), ValueRef::String(vrs)) => vrs.as_ref().partial_cmp(vs),
+            (Value::Number(Number::I32(vi)), ValueRef::I32(vri)) => vri.partial_cmp(vi),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

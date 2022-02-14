@@ -2,15 +2,15 @@
 
 use crate::error::FltrError;
 use crate::operator::{OperatorFn, Operators};
-use crate::value::{Predicate, Value};
+use crate::value::{Predicate, Value, ValueRef};
 use crate::{PathResolver, Result};
 
-pub trait Executor<Arg> {
-    fn prepare(&mut self, _arg: &Arg) -> Result<bool> {
+pub trait Executor<'a, Arg> {
+    fn prepare(&mut self, _arg: &'a Arg) -> Result<bool> {
         Ok(true)
     }
 
-    fn exec(&self, arg: &Arg) -> bool;
+    fn exec(&self, arg: &'a Arg) -> bool;
 }
 
 struct SimpleExec<'a, Arg> {
@@ -27,21 +27,21 @@ impl<'a, Arg> SimpleExec<'a, Arg> {
     }
 }
 
-impl<'a, Arg> Executor<Arg> for SimpleExec<'a, Arg> {
-    fn exec(&self, arg: &Arg) -> bool {
+impl<'a, Arg> Executor<'a, Arg> for SimpleExec<'a, Arg> {
+    fn exec(&self, arg: &'a Arg) -> bool {
         (self.f)(arg, self.value)
     }
 }
 
-struct PathExec<'a, Arg> {
+struct PathExec<'a> {
     path: &'a str,
     index: usize,
     value: &'a Value,
-    f: &'a OperatorFn<Arg>,
+    f: &'a OperatorFn<ValueRef<'a>>,
 }
 
-impl<'a, Arg> PathExec<'a, Arg> {
-    pub(crate) fn new(p: &'a Predicate, ops: &'a Operators<Arg>) -> Self {
+impl<'a> PathExec<'a> {
+    pub(crate) fn new(p: &'a Predicate, ops: &'a Operators<ValueRef<'a>>) -> Self {
         Self {
             path: p.path.as_ref().unwrap(),
             index: 0,
@@ -51,11 +51,11 @@ impl<'a, Arg> PathExec<'a, Arg> {
     }
 }
 
-impl<'a, Arg, PR> Executor<PR> for PathExec<'a, Arg>
+impl<'a, 'pr: 'a, PR: 'pr> Executor<'a, PR> for PathExec<'a>
 where
-    PR: PathResolver<Arg>,
+    PR: PathResolver,
 {
-    fn prepare(&mut self, pr: &PR) -> Result<bool> {
+    fn prepare(&mut self, pr: &'a PR) -> Result<bool> {
         if let Some(idx) = pr.path_to_index(self.path) {
             self.index = idx;
             return Ok(true);
@@ -63,9 +63,9 @@ where
         Err(FltrError(format!("invalid path: {}", self.path)))
     }
 
-    fn exec(&self, pr: &PR) -> bool {
+    fn exec(&self, pr: &'a PR) -> bool {
         let arg = pr.value(self.index);
-        (self.f)(arg, self.value)
+        (self.f)(&arg, self.value)
     }
 }
 
@@ -108,54 +108,40 @@ mod test {
         assert_eq!(expect, e.exec(&"Jasmin"));
     }
 
-    struct Car {
-        name: String,
+    struct Car<'a> {
+        name: &'a str,
         ps: i32,
         size: i32,
     }
 
-    impl PathResolver<i32> for Car {
+    impl PathResolver for Car<'_> {
         fn path_to_index(&self, path: &str) -> Option<usize> {
             match path {
-                "ps" => Some(0),
-                "size" => Some(1),
+                "name" => Some(0),
+                "ps" => Some(1),
+                "size" => Some(2),
                 _ => None,
             }
         }
 
-        fn value(&self, idx: usize) -> &i32 {
-            [&self.ps, &self.size][idx]
-        }
-    }
-
-    impl PathResolver<String> for Car {
-        fn path_to_index(&self, path: &str) -> Option<usize> {
-            if path == "name" {
-                return Some(0);
-            }
-            None
-        }
-
-        fn value(&self, idx: usize) -> &String {
-            if idx == 0 {
-                return &self.name;
-            }
-            &self.name
+        fn value(&self, idx: usize) -> ValueRef {
+            [(&self.name).into(), (self.ps).into(), (self.size).into()][idx]
         }
     }
 
     #[test_case("size = 54", true; "size eq 54")]
     #[test_case("size len 2", true; "len eq 2")]
     #[test_case("ps > 140", true; "ps gt 140")]
-    // #[test_case(r#"name = "BMW""#, true; "name eq BMW")]
+    #[test_case(r#"name = "BMW""#, true; "name eq BMW")]
+    #[test_case(r#"name < "bmw""#, true; "name lt bmw")]
     fn path_exec(input: &str, expect: bool) {
         let mut parser = Parser::new(input);
         let p = predicate()(&mut parser).unwrap();
         let ops = Operators::default();
-        let mut e = PathExec::<i32>::new(&p, &ops);
+        let mut e = PathExec::new(&p, &ops);
 
         let car = Car {
-            name: String::from("BMW"),
+            name: "BMW",
             ps: 142,
             size: 54,
         };
