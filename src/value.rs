@@ -19,14 +19,14 @@ impl Display for Predicate {
 
 #[derive(PartialEq, PartialOrd, Debug)]
 pub enum Value {
-    String(String),
+    Text(String),
     CopyValue(CopyValue),
 }
 
 impl Display for Value {
     fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::String(s) => write!(fm, "{}", s),
+            Value::Text(s) => write!(fm, "{}", s),
             Value::CopyValue(c) => write!(fm, "{}", c),
         }
     }
@@ -34,14 +34,14 @@ impl Display for Value {
 
 #[derive(Clone, Copy)]
 pub enum RefValue<'a> {
-    String(&'a dyn AsRef<str>),
+    TextRef(&'a dyn AsRef<str>),
     CopyValue(CopyValue),
 }
 
 impl Display for RefValue<'_> {
     fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RefValue::String(s) => write!(fm, "{}", s.as_ref()),
+            RefValue::TextRef(s) => write!(fm, "{}", s.as_ref()),
             RefValue::CopyValue(c) => write!(fm, "{}", c),
         }
     }
@@ -50,7 +50,7 @@ impl Display for RefValue<'_> {
 impl Debug for RefValue<'_> {
     fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RefValue::String(s) => write!(fm, "{}", s.as_ref()),
+            RefValue::TextRef(s) => write!(fm, "{}", s.as_ref()),
             RefValue::CopyValue(c) => write!(fm, "{}", c),
         }
     }
@@ -202,7 +202,7 @@ macro_rules! partial_eq_cmp {
 }
 
 partial_eq_cmp! {
-    Value : Value::String => String
+    Value : Value::Text => String
 
     Value : Value::CopyValue => char
     Value : Value::CopyValue => bool
@@ -255,7 +255,7 @@ impl ::core::cmp::PartialEq<Value> for &str {
     #[inline]
     fn eq(&self, other: &Value) -> bool {
         match other {
-            Value::String(v) => self.eq(v),
+            Value::Text(v) => self.eq(v),
             _ => false,
         }
     }
@@ -265,7 +265,7 @@ impl ::core::cmp::PartialOrd<Value> for &str {
     #[inline]
     fn partial_cmp(&self, other: &Value) -> Option<::core::cmp::Ordering> {
         match other {
-            Value::String(v) => self.to_string().partial_cmp(v),
+            Value::Text(v) => self.to_string().partial_cmp(v),
             _ => None,
         }
     }
@@ -275,7 +275,7 @@ impl<'a> ::core::cmp::PartialEq<Value> for RefValue<'a> {
     #[inline]
     fn eq(&self, other: &Value) -> bool {
         match (other, self) {
-            (Value::String(vs), RefValue::String(vrs)) => vs.eq(vrs.as_ref()),
+            (Value::Text(vs), RefValue::TextRef(vrs)) => vs.eq(vrs.as_ref()),
             (Value::CopyValue(v), RefValue::CopyValue(rv)) => v.eq(rv),
             _ => false,
         }
@@ -286,7 +286,7 @@ impl<'a> ::core::cmp::PartialOrd<Value> for RefValue<'a> {
     #[inline]
     fn partial_cmp(&self, other: &Value) -> Option<::core::cmp::Ordering> {
         match (other, self) {
-            (Value::String(vs), RefValue::String(vrs)) => vrs.as_ref().partial_cmp(vs),
+            (Value::Text(vs), RefValue::TextRef(vrs)) => vrs.as_ref().partial_cmp(vs),
             (Value::CopyValue(v), RefValue::CopyValue(rv)) => rv.partial_cmp(v),
             _ => None,
         }
@@ -311,7 +311,6 @@ number_into_ref_value! {
     Number::U32   => u32
     Number::U64   => u64
     Number::U128  => u128
-    // N: Number::I32 => isize
     Number::I8    => i8
     Number::I16   => i16
     Number::I32   => i32
@@ -323,13 +322,13 @@ number_into_ref_value! {
 
 impl<'a> From<&'a String> for RefValue<'a> {
     fn from(s: &'a String) -> Self {
-        RefValue::String(s)
+        RefValue::TextRef(s)
     }
 }
 
 impl<'a> From<&'a &str> for RefValue<'a> {
     fn from(s: &'a &str) -> Self {
-        RefValue::String(s)
+        RefValue::TextRef(s)
     }
 }
 
@@ -414,15 +413,15 @@ mod test {
 
     #[test]
     fn cmp_string() {
-        assert!(String::from("foo") == Value::String("foo".into()));
+        assert!(String::from("foo") == Value::Text("foo".into()));
         assert!(String::from("foo") > String::from("bar"));
-        assert!(String::from("foo") > Value::String("bar".into()));
+        assert!(String::from("foo") > Value::Text("bar".into()));
 
-        assert!("foo" == Value::String("foo".into()));
-        assert!("foo" > Value::String("bar".into()));
+        assert!("foo" == Value::Text("foo".into()));
+        assert!("foo" > Value::Text("bar".into()));
 
-        assert_eq!("foo".to_string(), Value::String("foo".into()).to_string());
-        assert_eq!(RefValue::String(&"foo"), Value::String("foo".into()));
+        assert_eq!("foo".to_string(), Value::Text("foo".into()).to_string());
+        assert_eq!(RefValue::TextRef(&"foo"), Value::Text("foo".into()));
     }
 
     #[test]

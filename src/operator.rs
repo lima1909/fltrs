@@ -56,7 +56,7 @@ fn len<Arg: ToString>(arg: &Arg, v: &Value) -> bool {
 }
 
 fn starts_with<Arg: ToString>(arg: &Arg, v: &Value) -> bool {
-    if let Value::String(s) = v {
+    if let Value::Text(s) = v {
         return arg.to_string().starts_with(s);
     }
     false
@@ -112,7 +112,7 @@ mod test {
     fn exec_starts_with_str() {
         let op = Operators::default();
         let starts_with = op.get("starts_with").unwrap();
-        assert!((starts_with)(&"Paul", &Value::String("Pa".into())));
+        assert!((starts_with)(&"Paul", &Value::Text("Pa".into())));
     }
 
     #[test_case("=",  'f', Value::CopyValue(CopyValue::Char('f'))  ; "eq 'f'")]
