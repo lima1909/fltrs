@@ -1,9 +1,7 @@
-#![allow(dead_code)] // TODO: remove this
-
 use crate::value::Value;
 use core::fmt::{Debug, Display};
 
-#[derive(Debug)]
+#[derive(PartialEq, PartialOrd, Debug)]
 pub(crate) struct Exp {
     index: usize,
     pub(crate) ands: Vec<Ands>,
@@ -49,7 +47,7 @@ impl Exp {
     }
 }
 
-#[derive(Debug)]
+#[derive(PartialEq, PartialOrd, Debug)]
 pub(crate) struct Ands {
     pub(crate) filter: Filter,
     next: Vec<Filter>,
@@ -77,24 +75,24 @@ impl Ands {
         self.next.push(f);
     }
 
-    pub(crate) fn is_or(&self) -> bool {
-        self.next.is_empty()
-    }
+    // pub(crate) fn is_or(&self) -> bool {
+    //     self.next.is_empty()
+    // }
 }
 
 #[derive(PartialEq, PartialOrd, Debug)]
 pub(crate) enum Filter {
     Predicate(Predicate),
-    // Not(Ors),
-    // Nested(Ors),
+    Not(Exp),
+    Nested(Exp),
 }
 
 impl Display for Filter {
     fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Filter::Predicate(p) => write!(fm, "{}", p),
-            // Filter::Not(ors) => write!(fm, "not({})", ors),
-            // Filter::Nested(ors) => write!(fm, "({})", ors),
+            Filter::Not(exp) => write!(fm, "not({})", exp),
+            Filter::Nested(exp) => write!(fm, "({})", exp),
         }
     }
 }
