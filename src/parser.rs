@@ -2,7 +2,8 @@
 
 use crate::operator::Operators;
 use crate::scanner::{Result, Scanner};
-use crate::value::{CopyValue::*, Number, Predicate, Value, Value::*};
+use crate::token::{Exp, Filter, Predicate};
+use crate::value::{CopyValue::*, Number, Value, Value::*};
 
 use std::{
     ops::{Deref, DerefMut},
@@ -12,7 +13,7 @@ use std::{
 pub(crate) struct Parser<'a> {
     s: Scanner<'a>,
     ops: Operators<bool>,
-    // ors: Option<Ors>,
+    exp: Option<Exp>,
 }
 
 impl<'a> Parser<'a> {
@@ -20,7 +21,7 @@ impl<'a> Parser<'a> {
         Parser {
             s: Scanner::new(input),
             ops: Operators::default(),
-            // ors: None,
+            exp: None,
         }
     }
 }
@@ -42,6 +43,84 @@ impl<'a> DerefMut for Parser<'a> {
 ///////////////////////////////////////////////////////////////////////////////
 // Parser implementations
 ///////////////////////////////////////////////////////////////////////////////
+
+#[allow(unused_must_use)]
+pub(crate) fn parse(input: &str) -> Result<Exp> {
+    let mut parser = Parser::new(input);
+    let f = iws(&mut parser, filter())?;
+    parser.exp = Some(Exp::new(f));
+
+    loop {
+        if parser.s.look_str("or") {
+            iws(&mut parser, or())?;
+        } else if parser.s.look_str("and") {
+            iws(&mut parser, and())?;
+        } else {
+            parser.take_while(is_ws);
+            if parser.is_done() {
+                break;
+            }
+            return Err(parser.parse_err("expected 'or' or 'and', got"));
+        }
+    }
+    Ok(parser.exp.take().unwrap())
+}
+
+pub(crate) fn or() -> impl FnMut(&mut Parser) -> Result<()> {
+    |parser: &mut Parser| {
+        loop {
+            if !parser.take("or") {
+                break;
+            }
+            let f = iws(parser, filter())?;
+            parser.exp.as_mut().unwrap().or(f);
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn and() -> impl FnMut(&mut Parser) -> Result<()> {
+    |parser: &mut Parser| {
+        loop {
+            if !parser.take("and") {
+                break;
+            }
+            let f = iws(parser, filter())?;
+            parser.exp.as_mut().unwrap().and(f);
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn filter() -> impl FnMut(&mut Parser) -> Result<Filter> {
+    |parser: &mut Parser| {
+        // if parser.look_str("not(") {
+        //     Ok(not()(parser)?)
+        // } else if parser.look_str("(") {
+        //     Ok(nested()(parser)?)
+        // } else {
+        Ok(Filter::Predicate(predicate()(parser)?))
+        // }
+    }
+}
+
+// pub(crate) fn not() -> impl FnMut(&mut Parser) -> Result<Filter> {
+//     |parser: &mut Parser| {
+//         if parser.take("not") {
+//             let input = parser.take_surround(&'(', &')')?;
+//             Ok(Filter::Not(parse(&input)?))
+//         } else {
+//             Err(parser.parse_err("expeted key word 'not'"))
+//         }
+//     }
+// }
+
+// pub(crate) fn nested() -> impl FnMut(&mut Parser) -> Result<Filter> {
+//     |parser: &mut Parser| {
+//         let input = parser.take_surround(&'(', &')')?;
+//         Ok(Filter::Nested(parse(&input)?))
+//     }
+// }
 
 pub(crate) fn predicate() -> impl FnMut(&mut Parser) -> Result<Predicate> {
     |parser: &mut Parser| {
@@ -354,5 +433,24 @@ mod test {
     fn predicate_err(input: &str, err: ParseError) {
         let mut p = Parser::new(input);
         assert_eq!(err, predicate()(&mut p).err().unwrap());
+    }
+
+    #[test_case("= 7", Filter::Predicate(Predicate{path: None, op: String::from("="), value: CopyValue(Number(Number::I32(7)))}); "eq 7")]
+    #[test_case("name len 3", Filter::Predicate(Predicate{path: Some(String::from("name")), op: String::from("len"), value: CopyValue(Number(Number::I32(3)))}); "name len 3")]
+    fn filter_check(input: &str, expect: Filter) {
+        let mut p = Parser::new(input);
+        assert_eq!(expect, filter()(&mut p).unwrap());
+    }
+
+    #[test_case("= true or = false", "= true or = false")]
+    #[test_case("= true and != false", "= true and != false")]
+    #[test_case("name = 'X' and name != 'Y'", "name = X and name != Y")]
+    #[test_case("= 'W'  and !=  'Z'", "= W and != Z")]
+    #[test_case("= 'X' or = 'y'  and !=  'Z'", "= X or = y and != Z")]
+    #[test_case("= 'A' and = 'B'  or !=  'C'", "= A and = B or != C")]
+    #[test_case("= 1 and = 2 and = 3  or !=  4", "= 1 and = 2 and = 3 or != 4")]
+    #[test_case("= 1  or =   2 or =   3  and !=  4", "= 1 or = 2 or = 3 and != 4")]
+    fn parse_check(input: &str, display: &str) {
+        assert_eq!(display, format!("{}", parse(input).unwrap()));
     }
 }

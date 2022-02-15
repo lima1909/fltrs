@@ -3,6 +3,7 @@ pub mod operator;
 mod parser;
 mod runtime;
 mod scanner;
+mod token;
 pub mod value;
 
 use crate::error::FltrError;

@@ -2,7 +2,8 @@
 
 use crate::error::FltrError;
 use crate::operator::{OperatorFn, Operators};
-use crate::value::{Predicate, RefValue, Value};
+use crate::token::Predicate;
+use crate::value::{RefValue, Value};
 use crate::{PathResolver, Result};
 
 pub trait Executor<'a, Arg> {
@@ -66,6 +67,40 @@ where
     fn exec(&self, pr: &'a PR) -> bool {
         let arg = pr.value(self.index);
         (self.f)(&arg, self.value)
+    }
+}
+
+pub struct Or<L, R>(pub L, pub R);
+
+impl<'a, Arg, L, R> Executor<'a, Arg> for Or<L, R>
+where
+    L: Executor<'a, Arg>,
+    R: Executor<'a, Arg>,
+{
+    fn prepare(&mut self, arg: &'a Arg) -> Result<bool> {
+        self.0.prepare(arg)?;
+        self.1.prepare(arg)
+    }
+
+    fn exec(&self, arg: &'a Arg) -> bool {
+        self.0.exec(arg) || self.1.exec(arg)
+    }
+}
+
+pub struct And<L, R>(pub L, pub R);
+
+impl<'a, Arg, L, R> Executor<'a, Arg> for And<L, R>
+where
+    L: Executor<'a, Arg>,
+    R: Executor<'a, Arg>,
+{
+    fn prepare(&mut self, arg: &'a Arg) -> Result<bool> {
+        self.0.prepare(arg)?;
+        self.1.prepare(arg)
+    }
+
+    fn exec(&self, arg: &'a Arg) -> bool {
+        self.0.exec(arg) && self.1.exec(arg)
     }
 }
 

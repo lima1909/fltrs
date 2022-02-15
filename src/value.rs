@@ -2,22 +2,6 @@ use core::fmt::{Debug, Display};
 use core::str::FromStr;
 
 #[derive(PartialEq, PartialOrd, Debug)]
-pub(crate) struct Predicate {
-    pub(crate) path: Option<String>,
-    pub(crate) op: String,
-    pub(crate) value: Value,
-}
-
-impl Display for Predicate {
-    fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(p) = &self.path {
-            write!(fm, "{} ", p)?;
-        }
-        write!(fm, "{} {}", &self.op, &self.value)
-    }
-}
-
-#[derive(PartialEq, PartialOrd, Debug)]
 pub enum Value {
     Text(String),
     CopyValue(CopyValue),
