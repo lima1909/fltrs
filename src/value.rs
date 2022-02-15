@@ -25,11 +25,9 @@ pub enum Value {
 
 impl Display for Value {
     fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use self::Value::*;
-
         match self {
-            String(s) => write!(fm, "{}", s),
-            CopyValue(c) => write!(fm, "{}", c),
+            Value::String(s) => write!(fm, "{}", s),
+            Value::CopyValue(c) => write!(fm, "{}", c),
         }
     }
 }
@@ -273,24 +271,6 @@ impl ::core::cmp::PartialOrd<Value> for &str {
     }
 }
 
-impl<'a> From<&'a String> for RefValue<'a> {
-    fn from(s: &'a String) -> Self {
-        RefValue::String(s)
-    }
-}
-
-impl<'a> From<&'a &str> for RefValue<'a> {
-    fn from(s: &'a &str) -> Self {
-        RefValue::String(s)
-    }
-}
-
-impl<'a> From<i32> for RefValue<'a> {
-    fn from(i: i32) -> Self {
-        RefValue::CopyValue(CopyValue::Number(Number::I32(i)))
-    }
-}
-
 impl<'a> ::core::cmp::PartialEq<Value> for RefValue<'a> {
     #[inline]
     fn eq(&self, other: &Value) -> bool {
@@ -310,6 +290,58 @@ impl<'a> ::core::cmp::PartialOrd<Value> for RefValue<'a> {
             (Value::CopyValue(v), RefValue::CopyValue(rv)) => rv.partial_cmp(v),
             _ => None,
         }
+    }
+}
+
+macro_rules! number_into_ref_value {
+    ($($p:path => $t:ty)*) => ($(
+        impl<'v> ::core::convert::From<$t> for RefValue<'v> {
+            #[inline]
+            fn from(v: $t) -> Self {
+                RefValue::CopyValue(CopyValue::Number($p(v)))
+            }
+        }
+    )*);
+}
+
+number_into_ref_value! {
+    Number::Usize => usize
+    Number::U8    => u8
+    Number::U16   => u16
+    Number::U32   => u32
+    Number::U64   => u64
+    Number::U128  => u128
+    // N: Number::I32 => isize
+    Number::I8    => i8
+    Number::I16   => i16
+    Number::I32   => i32
+    Number::I64   => i64
+    Number::I128  => i128
+    Number::F32   => f32
+    Number::F64   => f64
+}
+
+impl<'a> From<&'a String> for RefValue<'a> {
+    fn from(s: &'a String) -> Self {
+        RefValue::String(s)
+    }
+}
+
+impl<'a> From<&'a &str> for RefValue<'a> {
+    fn from(s: &'a &str) -> Self {
+        RefValue::String(s)
+    }
+}
+
+impl<'a> From<bool> for RefValue<'a> {
+    fn from(b: bool) -> Self {
+        RefValue::CopyValue(CopyValue::Bool(b))
+    }
+}
+
+impl<'a> From<char> for RefValue<'a> {
+    fn from(c: char) -> Self {
+        RefValue::CopyValue(CopyValue::Char(c))
     }
 }
 
