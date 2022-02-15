@@ -45,12 +45,18 @@ impl Exp {
         let and = self.ands.get_mut(self.index).unwrap();
         and.push(f);
     }
+
+    pub(crate) fn get_ordered_ands(&mut self) -> &[Ands] {
+        self.ands
+            .sort_by(|a1, a2| a1.next.len().partial_cmp(&a2.next.len()).unwrap());
+        &self.ands
+    }
 }
 
 #[derive(PartialEq, PartialOrd, Debug)]
 pub(crate) struct Ands {
     pub(crate) filter: Filter,
-    next: Vec<Filter>,
+    pub(crate) next: Vec<Filter>,
 }
 
 impl Display for Ands {
@@ -75,9 +81,9 @@ impl Ands {
         self.next.push(f);
     }
 
-    // pub(crate) fn is_or(&self) -> bool {
-    //     self.next.is_empty()
-    // }
+    pub(crate) fn is_or(&self) -> bool {
+        self.next.is_empty()
+    }
 }
 
 #[derive(PartialEq, PartialOrd, Debug)]

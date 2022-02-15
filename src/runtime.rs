@@ -2,9 +2,34 @@
 
 use crate::error::FltrError;
 use crate::operator::{OperatorFn, Operators};
+use crate::parser::parse;
 use crate::token::Predicate;
 use crate::value::{RefValue, Value};
 use crate::{PathResolver, Result};
+
+// one filter
+// two filter: OR or AND
+// ...
+// filter
+// or
+// and
+// |
+// | | or
+// ||  and
+// | || and or
+// || | and or
+// || || and and or
+// | || || and and or or
+
+#[allow(unused_variables)]
+fn execute(input: &str) {
+    let mut exp = parse(input).unwrap();
+    for link in exp.get_ordered_ands() {
+        if !link.is_or() {
+            for and in &link.next {}
+        }
+    }
+}
 
 pub trait Executor<'a, Arg> {
     fn prepare(&mut self, _arg: &'a Arg) -> Result<bool> {
