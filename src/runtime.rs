@@ -2,8 +2,7 @@
 
 use crate::error::FltrError;
 use crate::operator::{OperatorFn, Operators};
-use crate::parser::parse;
-use crate::token::Predicate;
+use crate::token::{Exp, Filter};
 use crate::value::{RefValue, Value};
 use crate::{PathResolver, Result};
 
@@ -22,13 +21,33 @@ use crate::{PathResolver, Result};
 // | || || and and or or
 
 #[allow(unused_variables)]
-fn execute(input: &str) {
-    let mut exp = parse(input).unwrap();
-    for link in exp.get_ordered_ands() {
-        if !link.is_or() {
-            for and in &link.next {}
-        }
-    }
+fn create_or<'a, Arg>(
+    exp: Exp,
+    ops: &'a Operators<RefValue<'a>>,
+) -> Or<ExecForObjectPath<'a>, ExecForObjectPath<'a>> {
+    let mut it = exp.ands.into_iter();
+
+    let first = match &it.next().unwrap().filter {
+        // Filter::Predicate(p) => ExecForValue::new(p.value.clone(), ops.get(&p.op).unwrap()),
+        Filter::Predicate(p) => ExecForObjectPath::new(
+            p.path.clone().unwrap(),
+            p.value.clone(),
+            ops.get(&p.op).unwrap(),
+        ),
+        _ => todo!(),
+    };
+
+    let filter = match &it.next().unwrap().filter {
+        // Filter::Predicate(p) => ExecForValue::new(p.value.clone(), ops.get(&p.op).unwrap()),
+        Filter::Predicate(p) => ExecForObjectPath::new(
+            p.path.clone().unwrap(),
+            p.value.clone(),
+            ops.get(&p.op).unwrap(),
+        ),
+        _ => todo!(),
+    };
+
+    Or(first, filter)
 }
 
 pub trait Executor<'a, Arg> {
@@ -39,50 +58,47 @@ pub trait Executor<'a, Arg> {
     fn exec(&self, arg: &'a Arg) -> bool;
 }
 
-struct SimpleExec<'a, Arg> {
-    value: &'a Value,
+pub(crate) struct ExecForValue<'a, Arg> {
+    value: Value,
     f: &'a OperatorFn<Arg>,
 }
 
-impl<'a, Arg> SimpleExec<'a, Arg> {
-    pub(crate) fn new(p: &'a Predicate, ops: &'a Operators<Arg>) -> Self {
-        Self {
-            value: &p.value,
-            f: ops.get(&p.op).unwrap(),
-        }
+impl<'a, Arg> ExecForValue<'a, Arg> {
+    pub(crate) fn new(value: Value, f: &'a OperatorFn<Arg>) -> Self {
+        Self { value, f }
     }
 }
 
-impl<'a, Arg> Executor<'a, Arg> for SimpleExec<'a, Arg> {
+impl<'a, Arg> Executor<'a, Arg> for ExecForValue<'a, Arg> {
     fn exec(&self, arg: &'a Arg) -> bool {
-        (self.f)(arg, self.value)
+        (self.f)(arg, &self.value)
     }
 }
 
-struct PathExec<'a> {
-    path: &'a str,
+struct ExecForObjectPath<'a> {
+    path: String,
     index: usize,
-    value: &'a Value,
+    value: Value,
     f: &'a OperatorFn<RefValue<'a>>,
 }
 
-impl<'a> PathExec<'a> {
-    pub(crate) fn new(p: &'a Predicate, ops: &'a Operators<RefValue<'a>>) -> Self {
+impl<'a> ExecForObjectPath<'a> {
+    pub(crate) fn new(path: String, value: Value, f: &'a OperatorFn<RefValue<'a>>) -> Self {
         Self {
-            path: p.path.as_ref().unwrap(),
+            path,
             index: 0,
-            value: &p.value,
-            f: ops.get(&p.op).unwrap(),
+            value,
+            f,
         }
     }
 }
 
-impl<'a, 'pr: 'a, PR: 'pr> Executor<'a, PR> for PathExec<'a>
+impl<'a, 'pr: 'a, PR: 'pr> Executor<'a, PR> for ExecForObjectPath<'a>
 where
     PR: PathResolver,
 {
     fn prepare(&mut self, pr: &'a PR) -> Result<bool> {
-        if let Some(idx) = pr.path_to_index(self.path) {
+        if let Some(idx) = pr.path_to_index(&self.path) {
             self.index = idx;
             return Ok(true);
         }
@@ -91,7 +107,7 @@ where
 
     fn exec(&self, pr: &'a PR) -> bool {
         let arg = pr.value(self.index);
-        (self.f)(&arg, self.value)
+        (self.f)(&arg, &self.value)
     }
 }
 
@@ -133,7 +149,7 @@ where
 mod test {
     use super::*;
     use crate::operator::Operators;
-    use crate::parser::{predicate, Parser};
+    use crate::parser::{parse, predicate, Parser};
     use test_case::test_case;
 
     #[test_case("= 7", true; "eq 7")]
@@ -150,7 +166,7 @@ mod test {
         let mut parser = Parser::new(input);
         let p = predicate()(&mut parser).unwrap();
         let ops = Operators::default();
-        let e = SimpleExec::new(&p, &ops);
+        let e = ExecForValue::new(p.value.clone(), ops.get(&p.op).unwrap());
         assert_eq!(expect, e.exec(&7));
     }
 
@@ -164,7 +180,7 @@ mod test {
         let mut parser = Parser::new(input);
         let p = predicate()(&mut parser).unwrap();
         let ops = Operators::default();
-        let e = SimpleExec::new(&p, &ops);
+        let e = ExecForValue::new(p.value.clone(), ops.get(&p.op).unwrap());
         assert_eq!(expect, e.exec(&"Jasmin"));
     }
 
@@ -198,7 +214,11 @@ mod test {
         let mut parser = Parser::new(input);
         let p = predicate()(&mut parser).unwrap();
         let ops = Operators::default();
-        let mut e = PathExec::new(&p, &ops);
+        let mut e = ExecForObjectPath::new(
+            p.path.clone().unwrap(),
+            p.value.clone(),
+            ops.get(&p.op).unwrap(),
+        );
 
         let car = Car {
             name: "BMW",
@@ -207,5 +227,24 @@ mod test {
         };
         assert_eq!(Ok(true), e.prepare(&car));
         assert_eq!(expect, e.exec(&car));
+    }
+
+    #[test_case(r#"name = "BMW" or ps > 100"#, true; "name eq BMW or ps gt 100")]
+    #[test_case(r#"name = "Audi" or ps > 100"#, true; "name eq Audi or ps gt 100")]
+    #[test_case(r#"name = "Audi" or size = 200"#, false; "name eq Audi or size eq 200")]
+    fn first_try_to_exec(input: &str, expect: bool) {
+        let ops = Operators::default();
+        let exp = parse(input).unwrap();
+        let mut or = create_or::<Car>(exp, &ops);
+
+        let car = Car {
+            name: "BMW",
+            ps: 142,
+            size: 54,
+        };
+
+        let _ = or.prepare(&car).unwrap();
+
+        assert_eq!(expect, or.exec(&car));
     }
 }

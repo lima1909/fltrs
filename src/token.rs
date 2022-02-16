@@ -1,3 +1,5 @@
+#![allow(dead_code)] // TODO: remove this
+
 use crate::value::Value;
 use core::fmt::{Debug, Display};
 
@@ -116,5 +118,11 @@ impl Display for Predicate {
             write!(fm, "{} ", p)?;
         }
         write!(fm, "{} {}", &self.op, &self.value)
+    }
+}
+
+impl Predicate {
+    pub(crate) fn has_path(&self) -> bool {
+        self.path.is_some()
     }
 }
