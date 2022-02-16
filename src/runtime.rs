@@ -26,28 +26,10 @@ fn create_or<'a, Arg>(
     ops: &'a Operators<RefValue<'a>>,
 ) -> Or<ExecForObjectPath<'a>, ExecForObjectPath<'a>> {
     let mut it = exp.ands.into_iter();
-
-    let first = match &it.next().unwrap().filter {
-        // Filter::Predicate(p) => ExecForValue::new(p.value.clone(), ops.get(&p.op).unwrap()),
-        Filter::Predicate(p) => ExecForObjectPath::new(
-            p.path.clone().unwrap(),
-            p.value.clone(),
-            ops.get(&p.op).unwrap(),
-        ),
-        _ => todo!(),
-    };
-
-    let filter = match &it.next().unwrap().filter {
-        // Filter::Predicate(p) => ExecForValue::new(p.value.clone(), ops.get(&p.op).unwrap()),
-        Filter::Predicate(p) => ExecForObjectPath::new(
-            p.path.clone().unwrap(),
-            p.value.clone(),
-            ops.get(&p.op).unwrap(),
-        ),
-        _ => todo!(),
-    };
-
-    Or(first, filter)
+    Or(
+        ExecForObjectPath::from_filter(it.next().unwrap().filter, ops),
+        ExecForObjectPath::from_filter(it.next().unwrap().filter, ops),
+    )
 }
 
 pub trait Executor<'a, Arg> {
@@ -66,6 +48,13 @@ pub(crate) struct ExecForValue<'a, Arg> {
 impl<'a, Arg> ExecForValue<'a, Arg> {
     pub(crate) fn new(value: Value, f: &'a OperatorFn<Arg>) -> Self {
         Self { value, f }
+    }
+
+    pub(crate) fn from_filter(filter: Filter, ops: &'a Operators<Arg>) -> Self {
+        match filter {
+            Filter::Predicate(p) => ExecForValue::new(p.value.clone(), ops.get(&p.op).unwrap()),
+            _ => todo!(),
+        }
     }
 }
 
@@ -89,6 +78,17 @@ impl<'a> ExecForObjectPath<'a> {
             index: 0,
             value,
             f,
+        }
+    }
+
+    pub(crate) fn from_filter(filter: Filter, ops: &'a Operators<RefValue<'a>>) -> Self {
+        match filter {
+            Filter::Predicate(p) => ExecForObjectPath::new(
+                p.path.clone().unwrap(),
+                p.value.clone(),
+                ops.get(&p.op).unwrap(),
+            ),
+            _ => todo!(),
         }
     }
 }
