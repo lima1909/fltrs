@@ -2,7 +2,7 @@
 
 use crate::error::FltrError;
 use crate::operator::{OperatorFn, Operators};
-use crate::token::{Exp, Filter};
+use crate::token::{Ands, Exp, Filter};
 use crate::value::{RefValue, Value};
 use crate::{PathResolver, Result};
 
@@ -14,39 +14,54 @@ fn create_path_executor<'a, Arg: 'a>(
 where
     Arg: PathResolver,
 {
-    let len = exp.ands.len();
-
-    if len == 1 && exp.ands[0].is_or() {
+    if exp.ands.len() == 1 && exp.ands[0].is_or() {
         // only one filter
         return Box::new(ExecForObjectPath::from_filter(
             exp.ands.into_iter().next().unwrap().filter,
             ops,
         ));
-    } else if len == 1 {
-        // only ands
-        let ands = exp.ands.into_iter().next().unwrap();
-        let filter = Box::new(ExecForObjectPath::from_filter(ands.filter, ops));
+    } else {
+        let mut it = exp.ands.into_iter();
 
-        let mut it = ands.next.into_iter();
-        let mut and = And(
-            filter,
-            Box::new(ExecForObjectPath::from_filter(it.next().unwrap(), ops)),
-        );
-
-        for (i, next) in it.into_iter().enumerate() {
-            and = And(
-                Box::new(and),
-                Box::new(ExecForObjectPath::from_filter(next, ops)),
-            );
+        let mut ors;
+        let first_ands = create_path_and_executor(it.next().unwrap(), ops);
+        if let Some(ands) = it.next() {
+            ors = Box::new(Or(first_ands, create_path_and_executor(ands, ops)));
+        } else {
+            return first_ands;
         }
-        return Box::new(and);
+
+        for ands in it {
+            ors = Box::new(Or(create_path_and_executor(ands, ops), ors));
+        }
+        ors
+    }
+}
+
+fn create_path_and_executor<'a, Arg: 'a>(
+    ands: Ands,
+    ops: &'a Operators<RefValue<'a>>,
+) -> Box<dyn Executor<'a, Arg> + 'a>
+where
+    Arg: PathResolver,
+{
+    let mut it = ands.next.into_iter();
+
+    let mut and;
+    let filter = Box::new(ExecForObjectPath::from_filter(ands.filter, ops));
+    if let Some(a) = it.next() {
+        and = And(filter, Box::new(ExecForObjectPath::from_filter(a, ops)));
+    } else {
+        return filter;
     }
 
-    let mut it = exp.ands.into_iter();
-    Box::new(Or(
-        ExecForObjectPath::from_filter(it.next().unwrap().filter, ops),
-        ExecForObjectPath::from_filter(it.next().unwrap().filter, ops),
-    ))
+    for next in it {
+        and = And(
+            Box::new(and),
+            Box::new(ExecForObjectPath::from_filter(next, ops)),
+        );
+    }
+    Box::new(and)
 }
 
 pub trait Executor<'a, Arg> {
@@ -128,13 +143,12 @@ where
     }
 }
 
-pub struct Or<L, R>(pub L, pub R);
+pub struct Or<'a, Arg>(
+    pub Box<dyn Executor<'a, Arg> + 'a>,
+    pub Box<dyn Executor<'a, Arg> + 'a>,
+);
 
-impl<'a, Arg, L, R> Executor<'a, Arg> for Or<L, R>
-where
-    L: Executor<'a, Arg>,
-    R: Executor<'a, Arg>,
-{
+impl<'a, Arg> Executor<'a, Arg> for Or<'a, Arg> {
     fn prepare(&mut self, arg: &'a Arg) -> Result<bool> {
         self.0.prepare(arg)?;
         self.1.prepare(arg)
@@ -282,8 +296,27 @@ mod test {
 
     #[test_case(r#"name = "BMW" or ps > 100"#, true; "name eq BMW or ps gt 100")]
     #[test_case(r#"name = "Audi" or ps > 100"#, true; "name eq Audi or ps gt 100")]
+    #[test_case(r#"name = "Audi" or size = 200 or ps = 142"#, true; "3 ors")]
     #[test_case(r#"name = "Audi" or size = 200"#, false; "name eq Audi or size eq 200")]
-    fn create_path_executor_or(input: &str, expect: bool) {
+    fn create_path_executor_ors(input: &str, expect: bool) {
+        let ops = Operators::default();
+        let exp = parse(input).unwrap();
+
+        let car = Car {
+            name: "BMW",
+            ps: 142,
+            size: 54,
+        };
+
+        let mut ex = create_path_executor(exp, &ops);
+        let _ = ex.prepare(&car).unwrap();
+        assert_eq!(expect, ex.exec(&car));
+    }
+
+    #[test_case(r#"name = "BMW" and ps != 100 or size = 54"#, true; "and or")]
+    #[test_case(r#"name = "Audi" or ps = 142 and size = 54 or size > 100"#, true; "false || true && true || false -> true")]
+    #[test_case(r#"name = "BMW" or ps = 142 and size = 158 or size > 100"#, true; "true || true && false || false -> true")]
+    fn create_path_executor_ors_ands(input: &str, expect: bool) {
         let ops = Operators::default();
         let exp = parse(input).unwrap();
 
