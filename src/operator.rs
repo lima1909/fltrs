@@ -37,13 +37,13 @@ impl<Arg> Operators<Arg> {
         None
     }
 
-    pub fn is_valid(&self, op: &str) -> bool {
+    pub fn starts_with_valid_op(&self, op: &str) -> Option<&str> {
         for (n, _) in &self.op {
-            if n == &op {
-                return true;
+            if op.starts_with(n) {
+                return Some(n);
             }
         }
-        false
+        None
     }
 }
 
@@ -68,10 +68,11 @@ mod test {
     use test_case::test_case;
 
     #[test]
-    fn is_valid() {
+    fn starts_with_valid_op() {
         let op = Operators::<i32>::default();
-        assert!(op.is_valid("="));
-        assert!(!op.is_valid("foo"));
+        assert_eq!(Some("="), op.starts_with_valid_op("="));
+        assert_eq!(Some("="), op.starts_with_valid_op("=7"));
+        assert_eq!(None, op.starts_with_valid_op("foo"));
     }
 
     #[test]

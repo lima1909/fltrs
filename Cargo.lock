@@ -70,9 +70,9 @@ dependencies = [
 
 [[package]]
 name = "test-case"
-version = "2.0.0-rc2"
+version = "2.0.0-rc3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "afa682de28cc0b0156c64fc49aa323cde4c0fb69d75d42286a94597b8f278131"
+checksum = "e20e802f919906f714497b0b3620a43f1fc84e9d7b7ecf2c4e46e5a09323ebc8"
 dependencies = [
  "cfg-if",
  "proc-macro-error",

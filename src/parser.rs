@@ -145,9 +145,9 @@ pub(crate) fn predicate() -> impl FnMut(&mut Parser) -> Result<Predicate> {
 pub(crate) fn op() -> impl FnMut(&mut Parser) -> Result<String> {
     |parser: &mut Parser| {
         let op_str = parser.look_while(is_not_ws)?;
-        if parser.ops.is_valid(&op_str) {
-            parser.take(&op_str);
-            return Ok(op_str);
+        if let Some(op) = parser.ops.starts_with_valid_op(&op_str) {
+            parser.s.take(op);
+            return Ok(op.to_string());
         }
         Err(parser.parse_err(&format!("'{op_str}' is not a valid filter operation")))
     }
@@ -420,8 +420,10 @@ mod test {
         assert_eq!(err, op()(&mut p).err().unwrap());
     }
 
+    #[test_case("=7", Predicate{path: None, op: String::from("="), value: CopyValue(Number(Number::I32(7)))}; "eq7")]
     #[test_case("= 7", Predicate{path: None, op: String::from("="), value: CopyValue(Number(Number::I32(7)))}; "eq 7")]
     #[test_case("name len 3", Predicate{path: Some(String::from("name")), op: String::from("len"), value: CopyValue(Number(Number::I32(3)))}; "name len 3")]
+    #[test_case("name len3", Predicate{path: Some(String::from("name")), op: String::from("len"), value: CopyValue(Number(Number::I32(3)))}; "name len3")]
     fn predicate_check(input: &str, expect: Predicate) {
         let mut p = Parser::new(input);
         assert_eq!(expect, predicate()(&mut p).unwrap());
