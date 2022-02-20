@@ -28,10 +28,10 @@ where
 }
 
 impl<Arg> Operators<Arg> {
-    pub fn get(&self, op: &str) -> Option<&OperatorFn<Arg>> {
+    pub fn get(&self, op: &str) -> Option<OperatorFn<Arg>> {
         for (n, f) in &self.op {
             if n == &op {
-                return Some(f);
+                return Some(*f);
             }
         }
         None

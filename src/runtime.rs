@@ -7,7 +7,7 @@ use crate::value::{RefValue, Value};
 use crate::{PathResolver, Result};
 
 #[allow(unused_variables)]
-fn create_path_executor<'a, Arg: 'a>(
+pub(crate) fn create_path_executor<'a, Arg: 'a>(
     exp: Exp,
     ops: &'a Operators<RefValue<'a>>,
 ) -> Box<dyn Executor<'a, Arg> + 'a>
@@ -16,23 +16,57 @@ where
 {
     if exp.ands.len() == 1 && exp.ands[0].is_or() {
         // only one filter
-        return Box::new(ExecForObjectPath::from_filter(
+        Box::new(ExecForObjectPath::from_filter(
             exp.ands.into_iter().next().unwrap().filter,
             ops,
-        ));
+        ))
+    } else if exp.ands.len() == 1 {
+        // only and filters
+        Box::new(create_path_and_executor(
+            exp.ands.into_iter().next().unwrap(),
+            ops,
+        ))
     } else {
         let mut it = exp.ands.into_iter();
 
-        let mut ors;
-        let first_ands = create_path_and_executor(it.next().unwrap(), ops);
-        if let Some(ands) = it.next() {
-            ors = Box::new(Or(first_ands, create_path_and_executor(ands, ops)));
+        let a1 = it.next().unwrap();
+        let a2 = it.next().unwrap();
+
+        let mut ors: Box<dyn Executor<Arg>>;
+        if a1.is_or() && a2.is_or() {
+            ors = Box::new(Or::<ExecForObjectPath, ExecForObjectPath>(
+                ExecForObjectPath::from_filter(a1.filter, ops),
+                ExecForObjectPath::from_filter(a2.filter, ops),
+            ));
+        } else if a1.is_or() && !a2.is_or() {
+            ors = Box::new(Or::<ExecForObjectPath, Box<dyn Executor<Arg>>>(
+                ExecForObjectPath::from_filter(a1.filter, ops),
+                Box::new(create_path_and_executor(a2, ops)),
+            ));
+        } else if !a1.is_or() && a2.is_or() {
+            ors = Box::new(Or::<ExecForObjectPath, Box<dyn Executor<Arg>>>(
+                ExecForObjectPath::from_filter(a2.filter, ops),
+                Box::new(create_path_and_executor(a1, ops)),
+            ));
         } else {
-            return first_ands;
+            ors = Box::new(Or::<Box<dyn Executor<Arg>>, Box<dyn Executor<Arg>>>(
+                Box::new(create_path_and_executor(a1, ops)),
+                Box::new(create_path_and_executor(a2, ops)),
+            ));
         }
 
         for ands in it {
-            ors = Box::new(Or(create_path_and_executor(ands, ops), ors));
+            if ands.is_or() {
+                ors = Box::new(Or::<ExecForObjectPath, Box<dyn Executor<Arg>>>(
+                    ExecForObjectPath::from_filter(ands.filter, ops),
+                    ors,
+                ));
+            } else {
+                ors = Box::new(Or::<Box<dyn Executor<Arg>>, Box<dyn Executor<Arg>>>(
+                    Box::new(create_path_and_executor(ands, ops)),
+                    ors,
+                ));
+            }
         }
         ors
     }
@@ -41,27 +75,57 @@ where
 fn create_path_and_executor<'a, Arg: 'a>(
     ands: Ands,
     ops: &'a Operators<RefValue<'a>>,
-) -> Box<dyn Executor<'a, Arg> + 'a>
+) -> And<'a, Arg>
 where
     Arg: PathResolver,
 {
     let mut it = ands.next.into_iter();
 
-    let mut and;
-    let filter = Box::new(ExecForObjectPath::from_filter(ands.filter, ops));
-    if let Some(a) = it.next() {
-        and = And(filter, Box::new(ExecForObjectPath::from_filter(a, ops)));
-    } else {
-        return filter;
-    }
+    let mut and = And(
+        ExecForObjectPath::from_filter(ands.filter, ops),
+        Box::new(ExecForObjectPath::from_filter(it.next().unwrap(), ops)),
+    );
 
     for next in it {
-        and = And(
-            Box::new(and),
-            Box::new(ExecForObjectPath::from_filter(next, ops)),
-        );
+        and = And(ExecForObjectPath::from_filter(next, ops), Box::new(and));
     }
-    Box::new(and)
+    and
+}
+
+pub struct Or<L, R>(L, R);
+
+impl<'a, L, R, Arg> Executor<'a, Arg> for Or<L, R>
+where
+    L: Executor<'a, Arg>,
+    R: Executor<'a, Arg>,
+{
+    fn prepare(&mut self, arg: &'a Arg) -> Result<bool> {
+        self.0.prepare(arg)?;
+        self.1.prepare(arg)
+    }
+
+    fn exec(&self, arg: &'a Arg) -> bool {
+        self.0.exec(arg) || self.1.exec(arg)
+    }
+}
+
+pub struct And<'a, Arg>(
+    pub ExecForObjectPath<'a>,
+    pub Box<dyn Executor<'a, Arg> + 'a>,
+);
+
+impl<'a, Arg> Executor<'a, Arg> for And<'a, Arg>
+where
+    Arg: PathResolver,
+{
+    fn prepare(&mut self, arg: &'a Arg) -> Result<bool> {
+        self.0.prepare(arg)?;
+        self.1.prepare(arg)
+    }
+
+    fn exec(&self, arg: &'a Arg) -> bool {
+        self.0.exec(arg) && self.1.exec(arg)
+    }
 }
 
 pub trait Executor<'a, Arg> {
@@ -72,17 +136,27 @@ pub trait Executor<'a, Arg> {
     fn exec(&self, arg: &'a Arg) -> bool;
 }
 
-pub(crate) struct ExecForValue<'a, Arg> {
-    value: Value,
-    f: &'a OperatorFn<Arg>,
+impl<'a, Arg> Executor<'a, Arg> for Box<dyn Executor<'a, Arg> + 'a> {
+    fn prepare(&mut self, arg: &'a Arg) -> Result<bool> {
+        self.as_mut().prepare(arg)
+    }
+
+    fn exec(&self, arg: &'a Arg) -> bool {
+        self.as_ref().exec(arg)
+    }
 }
 
-impl<'a, Arg> ExecForValue<'a, Arg> {
-    pub(crate) fn new(value: Value, f: &'a OperatorFn<Arg>) -> Self {
+pub(crate) struct ExecForValue<Arg> {
+    value: Value,
+    f: OperatorFn<Arg>,
+}
+
+impl<Arg> ExecForValue<Arg> {
+    pub(crate) fn new(value: Value, f: OperatorFn<Arg>) -> Self {
         Self { value, f }
     }
 
-    pub(crate) fn from_filter(filter: Filter, ops: &'a Operators<Arg>) -> Self {
+    pub(crate) fn from_filter(filter: Filter, ops: Operators<Arg>) -> Self {
         match filter {
             Filter::Predicate(p) => ExecForValue::new(p.value.clone(), ops.get(&p.op).unwrap()),
             _ => todo!(),
@@ -90,21 +164,21 @@ impl<'a, Arg> ExecForValue<'a, Arg> {
     }
 }
 
-impl<'a, Arg> Executor<'a, Arg> for ExecForValue<'a, Arg> {
+impl<'a, Arg> Executor<'a, Arg> for ExecForValue<Arg> {
     fn exec(&self, arg: &'a Arg) -> bool {
         (self.f)(arg, &self.value)
     }
 }
 
-struct ExecForObjectPath<'a> {
+pub struct ExecForObjectPath<'a> {
     path: String,
     index: usize,
     value: Value,
-    f: &'a OperatorFn<RefValue<'a>>,
+    f: OperatorFn<RefValue<'a>>,
 }
 
 impl<'a> ExecForObjectPath<'a> {
-    pub(crate) fn new(path: String, value: Value, f: &'a OperatorFn<RefValue<'a>>) -> Self {
+    pub(crate) fn new(path: String, value: Value, f: OperatorFn<RefValue<'a>>) -> Self {
         Self {
             path,
             index: 0,
@@ -140,38 +214,6 @@ where
     fn exec(&self, pr: &'a PR) -> bool {
         let arg = pr.value(self.index);
         (self.f)(&arg, &self.value)
-    }
-}
-
-pub struct Or<'a, Arg>(
-    pub Box<dyn Executor<'a, Arg> + 'a>,
-    pub Box<dyn Executor<'a, Arg> + 'a>,
-);
-
-impl<'a, Arg> Executor<'a, Arg> for Or<'a, Arg> {
-    fn prepare(&mut self, arg: &'a Arg) -> Result<bool> {
-        self.0.prepare(arg)?;
-        self.1.prepare(arg)
-    }
-
-    fn exec(&self, arg: &'a Arg) -> bool {
-        self.0.exec(arg) || self.1.exec(arg)
-    }
-}
-
-pub struct And<'a, Arg>(
-    pub Box<dyn Executor<'a, Arg> + 'a>,
-    pub Box<dyn Executor<'a, Arg> + 'a>,
-);
-
-impl<'a, Arg> Executor<'a, Arg> for And<'a, Arg> {
-    fn prepare(&mut self, arg: &'a Arg) -> Result<bool> {
-        self.0.prepare(arg)?;
-        self.1.prepare(arg)
-    }
-
-    fn exec(&self, arg: &'a Arg) -> bool {
-        self.0.exec(arg) && self.1.exec(arg)
     }
 }
 
