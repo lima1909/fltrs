@@ -39,19 +39,19 @@ where
                 ExecForObjectPath::from_filter(a2.filter, ops),
             ));
         } else if a1.is_or() && !a2.is_or() {
-            ors = Box::new(Or::<ExecForObjectPath, Box<dyn Executor<Arg>>>(
+            ors = Box::new(Or::<ExecForObjectPath, And<'a, Arg>>(
                 ExecForObjectPath::from_filter(a1.filter, ops),
-                Box::new(create_path_and_executor(a2, ops)),
+                create_path_and_executor(a2, ops),
             ));
         } else if !a1.is_or() && a2.is_or() {
-            ors = Box::new(Or::<ExecForObjectPath, Box<dyn Executor<Arg>>>(
+            ors = Box::new(Or::<ExecForObjectPath, And<'a, Arg>>(
                 ExecForObjectPath::from_filter(a2.filter, ops),
-                Box::new(create_path_and_executor(a1, ops)),
+                create_path_and_executor(a1, ops),
             ));
         } else {
-            ors = Box::new(Or::<Box<dyn Executor<Arg>>, Box<dyn Executor<Arg>>>(
-                Box::new(create_path_and_executor(a1, ops)),
-                Box::new(create_path_and_executor(a2, ops)),
+            ors = Box::new(Or::<And<'a, Arg>, And<'a, Arg>>(
+                create_path_and_executor(a1, ops),
+                create_path_and_executor(a2, ops),
             ));
         }
 
@@ -62,8 +62,8 @@ where
                     ors,
                 ));
             } else {
-                ors = Box::new(Or::<Box<dyn Executor<Arg>>, Box<dyn Executor<Arg>>>(
-                    Box::new(create_path_and_executor(ands, ops)),
+                ors = Box::new(Or::<And<'a, Arg>, Box<dyn Executor<Arg>>>(
+                    create_path_and_executor(ands, ops),
                     ors,
                 ));
             }
