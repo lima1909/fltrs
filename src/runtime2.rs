@@ -1,3 +1,5 @@
+#![allow(dead_code)] // TODO: remove this
+
 use crate::operator::Operators;
 use crate::runtime::{ExecForObjectPath, Executor};
 use crate::token::{Exp, Filter};
