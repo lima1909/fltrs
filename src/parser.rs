@@ -182,16 +182,8 @@ pub(crate) fn is_valid_path(pos: usize, c: &char) -> core::result::Result<bool, 
 pub(crate) fn value() -> impl FnMut(&mut Parser) -> Result<Value> {
     |parser: &mut Parser| match parser.s.look() {
         Some(c) => match c {
-            '"' => Ok(text()(parser)?),
-            '\'' => {
-                let r = parser.take_surround(&'\'', &'\'')?;
-                if r.len() != 1 {
-                    return Err(
-                        parser.parse_err(&format!("expected char len is 1 not {}", r.len(),))
-                    );
-                }
-                Ok(CopyValue(Char(r.chars().next().unwrap())))
-            }
+            '"' => text()(parser),
+            '\'' => char()(parser),
             't' => Ok(CopyValue(Bool(map("true")(parser)?))),
             'f' => Ok(CopyValue(Bool(map("false")(parser)?))),
             '-' | '0'..='9' => Ok(CopyValue(Number(number()(parser)?))),
@@ -217,6 +209,17 @@ pub(crate) fn text() -> impl FnMut(&mut Parser) -> Result<Value> {
                 as_type, text
             ))),
         }
+    }
+}
+
+#[inline]
+pub(crate) fn char() -> impl FnMut(&mut Parser) -> Result<Value> {
+    |parser: &mut Parser| {
+        let r = parser.take_surround(&'\'', &'\'')?;
+        if r.len() != 1 {
+            return Err(parser.parse_err(&format!("expected char len is 1 not {}", r.len(),)));
+        }
+        Ok(CopyValue(Char(r.chars().next().unwrap())))
     }
 }
 
@@ -413,6 +416,25 @@ mod test {
     fn text_err(input: &str, err: ParseError) {
         let mut p = Parser::new(input);
         assert_eq!(err, text()(&mut p).err().unwrap());
+    }
+
+    #[test]
+    fn char_check() {
+        let mut p = Parser::new("'Y'");
+        assert_eq!(CopyValue(Char('Y')), char()(&mut p).unwrap());
+    }
+
+    #[test]
+    fn char_err() {
+        let mut p = Parser::new("'abc'");
+        assert_eq!(
+            ParseError {
+                input: r#"'abc'"#.into(),
+                location: Location { line: 1, column: 5 },
+                err_msg: "expected char len is 1 not 3".into()
+            },
+            char()(&mut p).err().unwrap()
+        );
     }
 
     #[test_case("240 as u8", CopyValue(Number(Number::U8(240))) ; "240 as u8")]
