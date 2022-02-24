@@ -10,10 +10,13 @@ use std::{
     str::FromStr,
 };
 
+pub type TextParserFn = fn(text: &str) -> Value;
+
 pub(crate) struct Parser<'a> {
     s: Scanner<'a>,
     ops: Operators<bool>,
     exp: Option<Exp>,
+    text_parser_fns: Vec<(&'static str, TextParserFn)>,
 }
 
 impl<'a> Parser<'a> {
@@ -22,7 +25,14 @@ impl<'a> Parser<'a> {
             s: Scanner::new(input),
             ops: Operators::default(),
             exp: None,
+            text_parser_fns: vec![],
         }
+    }
+
+    fn get_text_parser_fn(&self, p: &str) -> Option<&TextParserFn> {
+        self.text_parser_fns
+            .iter()
+            .find_map(|(tp, f)| if *tp == p { Some(f) } else { None })
     }
 }
 
@@ -172,7 +182,7 @@ pub(crate) fn is_valid_path(pos: usize, c: &char) -> core::result::Result<bool, 
 pub(crate) fn value() -> impl FnMut(&mut Parser) -> Result<Value> {
     |parser: &mut Parser| match parser.s.look() {
         Some(c) => match c {
-            '"' => Ok(Text(parser.take_surround(&'"', &'"')?)),
+            '"' => Ok(text()(parser)?),
             '\'' => {
                 let r = parser.take_surround(&'\'', &'\'')?;
                 if r.len() != 1 {
@@ -188,6 +198,25 @@ pub(crate) fn value() -> impl FnMut(&mut Parser) -> Result<Value> {
             _ => Err(parser.parse_err(&format!("unexpected char '{}' for a valid Value", c))),
         },
         None => Err(parser.parse_err("unexpected end")),
+    }
+}
+
+#[inline]
+pub(crate) fn text() -> impl FnMut(&mut Parser) -> Result<Value> {
+    |parser: &mut Parser| {
+        let text = parser.take_surround(&'"', &'"')?;
+        let as_type = iws(parser, with_as())?;
+        if as_type.is_empty() {
+            return Ok(Text(text));
+        }
+
+        match parser.get_text_parser_fn(&as_type) {
+            Some(f) => Ok((f)(&text)),
+            None => Err(parser.parse_err(&format!(
+                "unknown function: '{}' for converting the text: '{}'",
+                as_type, text
+            ))),
+        }
     }
 }
 
@@ -368,6 +397,22 @@ mod test {
     fn number_err(input: &str, err: ParseError) {
         let mut p = Parser::new(input);
         assert_eq!(err, number()(&mut p).err().unwrap());
+    }
+
+    #[test_case(r#""yeh""#, Value::Text("yeh".into()) ; "simple text")]
+    #[test_case(r#""123" as u32"#, CopyValue(Number(Number::U32(123))) ; "text as u32")]
+    fn text_check(input: &str, expect: Value) {
+        let mut p = Parser::new(input);
+        p.text_parser_fns.push(("u32", |s: &str| -> Value {
+            CopyValue(Number(Number::U32(u32::from_str(s).unwrap())))
+        }));
+        assert_eq!(expect, text()(&mut p).unwrap());
+    }
+
+    #[test_case(r#""123" as u32"#, ParseError {input: r#""123" as u32"#.into(),location: Location { line: 1, column: 12},err_msg: "unknown function: 'u32' for converting the text: '123'".into()} ; "240 as i8")]
+    fn text_err(input: &str, err: ParseError) {
+        let mut p = Parser::new(input);
+        assert_eq!(err, text()(&mut p).err().unwrap());
     }
 
     #[test_case("240 as u8", CopyValue(Number(Number::U8(240))) ; "240 as u8")]
