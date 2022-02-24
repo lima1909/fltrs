@@ -22,6 +22,7 @@ where
                 (">", Arg::gt),
                 ("len", len),
                 ("starts_with", starts_with),
+                ("one_of", one_of),
             ],
         }
     }
@@ -60,6 +61,13 @@ fn starts_with<Arg: ToString>(arg: &Arg, v: &Value) -> bool {
         return arg.to_string().starts_with(s);
     }
     false
+}
+
+fn one_of<Arg: PartialEq<Value>>(arg: &Arg, v: &Value) -> bool {
+    if let Value::List(vs) = v {
+        return vs.iter().filter(|v| arg.eq(*v)).count() > 0;
+    }
+    arg.eq(v)
 }
 
 #[cfg(test)]
@@ -114,6 +122,18 @@ mod test {
         let op = Operators::default();
         let starts_with = op.get("starts_with").unwrap();
         assert!((starts_with)(&"Paul", &Value::Text("Pa".into())));
+    }
+
+    #[test]
+    fn exec_one_of_str() {
+        let op = Operators::default();
+        let one_of = op.get("one_of").unwrap();
+        assert!((one_of)(
+            &"Paul",
+            &Value::List(vec![Value::Text("Inge".into()), Value::Text("Paul".into())])
+        ));
+
+        assert!((one_of)(&"Paul", &Value::Text("Paul".into())));
     }
 
     #[test_case("=",  'f', Value::CopyValue(CopyValue::Char('f'))  ; "eq 'f'")]

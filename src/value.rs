@@ -3,6 +3,7 @@ use core::str::FromStr;
 
 #[derive(PartialEq, PartialOrd, Debug, Clone)]
 pub enum Value {
+    List(Vec<Value>),
     Text(String),
     CopyValue(CopyValue),
 }
@@ -10,6 +11,7 @@ pub enum Value {
 impl Display for Value {
     fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Value::List(vs) => write!(fm, "{:?}", vs),
             Value::Text(s) => write!(fm, "{}", s),
             Value::CopyValue(c) => write!(fm, "{}", c),
         }
