@@ -18,30 +18,6 @@ impl Display for Value {
     }
 }
 
-#[derive(Clone, Copy)]
-pub enum RefValue<'a> {
-    TextRef(&'a dyn AsRef<str>),
-    CopyValue(CopyValue),
-}
-
-impl Display for RefValue<'_> {
-    fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RefValue::TextRef(s) => write!(fm, "{}", s.as_ref()),
-            RefValue::CopyValue(c) => write!(fm, "{}", c),
-        }
-    }
-}
-
-impl Debug for RefValue<'_> {
-    fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RefValue::TextRef(s) => write!(fm, "{}", s.as_ref()),
-            RefValue::CopyValue(c) => write!(fm, "{}", c),
-        }
-    }
-}
-
 #[derive(PartialEq, PartialOrd, Debug, Clone, Copy)]
 pub enum CopyValue {
     Char(char),
@@ -257,79 +233,6 @@ impl ::core::cmp::PartialOrd<Value> for &str {
     }
 }
 
-impl<'a> ::core::cmp::PartialEq<Value> for RefValue<'a> {
-    #[inline]
-    fn eq(&self, other: &Value) -> bool {
-        match (other, self) {
-            (Value::Text(vs), RefValue::TextRef(vrs)) => vs.eq(vrs.as_ref()),
-            (Value::CopyValue(v), RefValue::CopyValue(rv)) => v.eq(rv),
-            _ => false,
-        }
-    }
-}
-
-impl<'a> ::core::cmp::PartialOrd<Value> for RefValue<'a> {
-    #[inline]
-    fn partial_cmp(&self, other: &Value) -> Option<::core::cmp::Ordering> {
-        match (other, self) {
-            (Value::Text(vs), RefValue::TextRef(vrs)) => vrs.as_ref().partial_cmp(vs),
-            (Value::CopyValue(v), RefValue::CopyValue(rv)) => rv.partial_cmp(v),
-            _ => None,
-        }
-    }
-}
-
-macro_rules! number_into_ref_value {
-    ($($p:path => $t:ty)*) => ($(
-        impl<'v> ::core::convert::From<$t> for RefValue<'v> {
-            #[inline]
-            fn from(v: $t) -> Self {
-                RefValue::CopyValue(CopyValue::Number($p(v)))
-            }
-        }
-    )*);
-}
-
-number_into_ref_value! {
-    Number::Usize => usize
-    Number::U8    => u8
-    Number::U16   => u16
-    Number::U32   => u32
-    Number::U64   => u64
-    Number::U128  => u128
-    Number::I8    => i8
-    Number::I16   => i16
-    Number::I32   => i32
-    Number::I64   => i64
-    Number::I128  => i128
-    Number::F32   => f32
-    Number::F64   => f64
-}
-
-impl<'a> From<&'a String> for RefValue<'a> {
-    fn from(s: &'a String) -> Self {
-        RefValue::TextRef(s)
-    }
-}
-
-impl<'a> From<&'a &str> for RefValue<'a> {
-    fn from(s: &'a &str) -> Self {
-        RefValue::TextRef(s)
-    }
-}
-
-impl<'a> From<bool> for RefValue<'a> {
-    fn from(b: bool) -> Self {
-        RefValue::CopyValue(CopyValue::Bool(b))
-    }
-}
-
-impl<'a> From<char> for RefValue<'a> {
-    fn from(c: char) -> Self {
-        RefValue::CopyValue(CopyValue::Char(c))
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -349,15 +252,6 @@ mod test {
         assert!(10usize == Value::CopyValue(CopyValue::Number(Number::Usize(10))));
         assert!(10 as u32 > Value::CopyValue(CopyValue::Number(Number::U32(9))));
         assert!(10u64 < Value::CopyValue(CopyValue::Number(Number::U64(11))));
-
-        assert!(
-            RefValue::CopyValue(CopyValue::Number(Number::Usize(10)))
-                == Value::CopyValue(CopyValue::Number(Number::Usize(10)))
-        );
-        assert!(
-            RefValue::CopyValue(CopyValue::Number(Number::Usize(20)))
-                > Value::CopyValue(CopyValue::Number(Number::Usize(10)))
-        );
     }
 
     #[test]
@@ -377,11 +271,6 @@ mod test {
         assert!(10.2 == CopyValue::Number(Number::F64(10.2)));
         assert!(10.2 > CopyValue::Number(Number::F64(9.3)));
         assert!(10.2 < Value::CopyValue(CopyValue::Number(Number::F64(11.3))));
-
-        assert!(
-            RefValue::CopyValue(CopyValue::Number(Number::F64(10.2)))
-                < Value::CopyValue(CopyValue::Number(Number::F64(11.3)))
-        );
     }
 
     #[test]
@@ -391,10 +280,6 @@ mod test {
         assert!(true > Value::CopyValue(CopyValue::Bool(false)));
 
         assert_eq!(false.to_string(), CopyValue::Bool(false).to_string());
-
-        assert!(
-            RefValue::CopyValue(CopyValue::Bool(true)) > Value::CopyValue(CopyValue::Bool(false))
-        );
     }
 
     #[test]
@@ -407,7 +292,6 @@ mod test {
         assert!("foo" > Value::Text("bar".into()));
 
         assert_eq!("foo".to_string(), Value::Text("foo".into()).to_string());
-        assert_eq!(RefValue::TextRef(&"foo"), Value::Text("foo".into()));
     }
 
     #[test]
@@ -417,8 +301,6 @@ mod test {
         assert!('Y' > Value::CopyValue(CopyValue::Char('X')));
 
         assert_eq!('Z'.to_string(), CopyValue::Char('Z').to_string());
-
-        assert!(RefValue::CopyValue(CopyValue::Char('Y')) > Value::CopyValue(CopyValue::Char('X')));
     }
 
     #[test]
