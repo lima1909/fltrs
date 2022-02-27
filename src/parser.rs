@@ -3,7 +3,7 @@
 use crate::operator::Operators;
 use crate::scanner::{Result, Scanner};
 use crate::token::{Exp, Filter, Predicate};
-use crate::value::{CopyValue::*, Number, Value, Value::*};
+use crate::value::{Number, Value, Value::*};
 
 use std::{
     ops::{Deref, DerefMut},
@@ -184,9 +184,9 @@ pub(crate) fn value() -> impl FnMut(&mut Parser) -> Result<Value> {
         Some(c) => match c {
             '"' => text()(parser),
             '\'' => char()(parser),
-            't' => Ok(CopyValue(Bool(map("true")(parser)?))),
-            'f' => Ok(CopyValue(Bool(map("false")(parser)?))),
-            '-' | '0'..='9' => Ok(CopyValue(Number(number()(parser)?))),
+            't' => Ok(Bool(map("true")(parser)?)),
+            'f' => Ok(Bool(map("false")(parser)?)),
+            '-' | '0'..='9' => Ok(Number(number()(parser)?)),
             _ => Err(parser.parse_err(&format!("unexpected char '{}' for a valid Value", c))),
         },
         None => Err(parser.parse_err("unexpected end")),
@@ -219,7 +219,7 @@ pub(crate) fn char() -> impl FnMut(&mut Parser) -> Result<Value> {
         if r.len() != 1 {
             return Err(parser.parse_err(&format!("expected char len is 1 not {}", r.len(),)));
         }
-        Ok(CopyValue(Char(r.chars().next().unwrap())))
+        Ok(Char(r.chars().next().unwrap()))
     }
 }
 
@@ -403,11 +403,11 @@ mod test {
     }
 
     #[test_case(r#""yeh""#, Value::Text("yeh".into()) ; "simple text")]
-    #[test_case(r#""123" as u32"#, CopyValue(Number(Number::U32(123))) ; "text as u32")]
+    #[test_case(r#""123" as u32"#, Number(Number::U32(123)) ; "text as u32")]
     fn text_check(input: &str, expect: Value) {
         let mut p = Parser::new(input);
         p.text_parser_fns.push(("u32", |s: &str| -> Value {
-            CopyValue(Number(Number::U32(u32::from_str(s).unwrap())))
+            Number(Number::U32(u32::from_str(s).unwrap()))
         }));
         assert_eq!(expect, text()(&mut p).unwrap());
     }
@@ -421,7 +421,7 @@ mod test {
     #[test]
     fn char_check() {
         let mut p = Parser::new("'Y'");
-        assert_eq!(CopyValue(Char('Y')), char()(&mut p).unwrap());
+        assert_eq!(Char('Y'), char()(&mut p).unwrap());
     }
 
     #[test]
@@ -437,11 +437,11 @@ mod test {
         );
     }
 
-    #[test_case("240 as u8", CopyValue(Number(Number::U8(240))) ; "240 as u8")]
-    #[test_case("true", CopyValue(Bool(true)) ; "true_val")]
-    #[test_case("false", CopyValue(Bool(false)) ; "false_val")]
+    #[test_case("240 as u8", Number(Number::U8(240)) ; "240 as u8")]
+    #[test_case("true", Bool(true) ; "true_val")]
+    #[test_case("false", Bool(false) ; "false_val")]
     #[test_case(r#""false""#, Text("false".into()) ; "false_string_val")]
-    #[test_case(r#"'X'"#, CopyValue(Char('X'.into())) ; "X_char_val")]
+    #[test_case(r#"'X'"#, Char('X'.into()) ; "X_char_val")]
     fn value_check(input: &str, expect: Value) {
         let mut p = Parser::new(input);
         assert_eq!(expect, value()(&mut p).unwrap());
@@ -487,10 +487,10 @@ mod test {
         assert_eq!(err, op()(&mut p).err().unwrap());
     }
 
-    #[test_case("=7", Predicate{path: None, op: String::from("="), value: CopyValue(Number(Number::I32(7)))}; "eq7")]
-    #[test_case("= 7", Predicate{path: None, op: String::from("="), value: CopyValue(Number(Number::I32(7)))}; "eq 7")]
-    #[test_case("name len 3", Predicate{path: Some(String::from("name")), op: String::from("len"), value: CopyValue(Number(Number::I32(3)))}; "name len 3")]
-    #[test_case("name len3", Predicate{path: Some(String::from("name")), op: String::from("len"), value: CopyValue(Number(Number::I32(3)))}; "name len3")]
+    #[test_case("=7", Predicate{path: None, op: String::from("="), value: Number(Number::I32(7))}; "eq7")]
+    #[test_case("= 7", Predicate{path: None, op: String::from("="), value: Number(Number::I32(7))}; "eq 7")]
+    #[test_case("name len 3", Predicate{path: Some(String::from("name")), op: String::from("len"), value: Number(Number::I32(3))}; "name len 3")]
+    #[test_case("name len3", Predicate{path: Some(String::from("name")), op: String::from("len"), value: Number(Number::I32(3))}; "name len3")]
     fn predicate_check(input: &str, expect: Predicate) {
         let mut p = Parser::new(input);
         assert_eq!(expect, predicate()(&mut p).unwrap());
@@ -503,8 +503,8 @@ mod test {
         assert_eq!(err, predicate()(&mut p).err().unwrap());
     }
 
-    #[test_case("= 7", Filter::Predicate(Predicate{path: None, op: String::from("="), value: CopyValue(Number(Number::I32(7)))}); "eq 7")]
-    #[test_case("name len 3", Filter::Predicate(Predicate{path: Some(String::from("name")), op: String::from("len"), value: CopyValue(Number(Number::I32(3)))}); "name len 3")]
+    #[test_case("= 7", Filter::Predicate(Predicate{path: None, op: String::from("="), value: Number(Number::I32(7))}); "eq 7")]
+    #[test_case("name len 3", Filter::Predicate(Predicate{path: Some(String::from("name")), op: String::from("len"), value: Number(Number::I32(3))}); "name len 3")]
     fn filter_check(input: &str, expect: Filter) {
         let mut p = Parser::new(input);
         assert_eq!(expect, filter()(&mut p).unwrap());

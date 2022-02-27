@@ -5,7 +5,9 @@ use core::str::FromStr;
 pub enum Value {
     List(Vec<Value>),
     Text(String),
-    CopyValue(CopyValue),
+    Char(char),
+    Bool(bool),
+    Number(Number),
 }
 
 impl Display for Value {
@@ -13,26 +15,9 @@ impl Display for Value {
         match self {
             Value::List(vs) => write!(fm, "{:?}", vs),
             Value::Text(s) => write!(fm, "{}", s),
-            Value::CopyValue(c) => write!(fm, "{}", c),
-        }
-    }
-}
-
-#[derive(PartialEq, PartialOrd, Debug, Clone, Copy)]
-pub enum CopyValue {
-    Char(char),
-    Bool(bool),
-    Number(Number),
-}
-
-impl Display for CopyValue {
-    fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use self::CopyValue::*;
-
-        match self {
-            Char(c) => write!(fm, "{}", c),
-            Bool(b) => write!(fm, "{}", b),
-            Number(n) => write!(fm, "{}", n),
+            Value::Char(c) => write!(fm, "{}", c),
+            Value::Bool(b) => write!(fm, "{}", b),
+            Value::Number(n) => write!(fm, "{}", n),
         }
     }
 }
@@ -165,38 +150,22 @@ macro_rules! partial_eq_cmp {
 
 partial_eq_cmp! {
     Value : Value::Text => String
+    Value : Value::Char => char
+    Value : Value::Bool => bool
+    Value : Value::Number => usize
+    Value : Value::Number => u8
+    Value : Value::Number => u16
+    Value : Value::Number => u32
+    Value : Value::Number => u64
+    Value : Value::Number => u128
+    Value : Value::Number => i8
+    Value : Value::Number => i16
+    Value : Value::Number => i32
+    Value : Value::Number => i64
+    Value : Value::Number => i128
+    Value : Value::Number => f32
+    Value : Value::Number => f64
 
-    Value : Value::CopyValue => char
-    Value : Value::CopyValue => bool
-    Value : Value::CopyValue => usize
-    Value : Value::CopyValue => u8
-    Value : Value::CopyValue => u16
-    Value : Value::CopyValue => u32
-    Value : Value::CopyValue => u64
-    Value : Value::CopyValue => u128
-    Value : Value::CopyValue => i8
-    Value : Value::CopyValue => i16
-    Value : Value::CopyValue => i32
-    Value : Value::CopyValue => i64
-    Value : Value::CopyValue => i128
-    Value : Value::CopyValue => f32
-    Value : Value::CopyValue => f64
-
-    CopyValue: CopyValue::Char => char
-    CopyValue: CopyValue::Bool => bool
-    CopyValue : CopyValue::Number => usize
-    CopyValue : CopyValue::Number => u8
-    CopyValue : CopyValue::Number => u16
-    CopyValue : CopyValue::Number => u32
-    CopyValue : CopyValue::Number => u64
-    CopyValue : CopyValue::Number => u128
-    CopyValue : CopyValue::Number => i8
-    CopyValue : CopyValue::Number => i16
-    CopyValue : CopyValue::Number => i32
-    CopyValue : CopyValue::Number => i64
-    CopyValue : CopyValue::Number => i128
-    CopyValue : CopyValue::Number => f32
-    CopyValue : CopyValue::Number => f64
 
     Number : Number::Usize => usize
     Number : Number::U8 => u8
@@ -245,13 +214,13 @@ mod test {
 
         assert_eq!(10.to_string(), Number::I32(10).to_string());
 
-        assert!(10u128 == CopyValue::Number(Number::U128(10)));
-        assert!(10 as u8 > CopyValue::Number(Number::U8(9)));
-        assert!(10u16 < CopyValue::Number(Number::U16(11)));
+        assert!(10u128 == Number::U128(10));
+        assert!(10 as u8 > Number::U8(9));
+        assert!(10u16 < Number::U16(11));
 
-        assert!(10usize == Value::CopyValue(CopyValue::Number(Number::Usize(10))));
-        assert!(10 as u32 > Value::CopyValue(CopyValue::Number(Number::U32(9))));
-        assert!(10u64 < Value::CopyValue(CopyValue::Number(Number::U64(11))));
+        assert!(10usize == Value::Number(Number::Usize(10)));
+        assert!(10 as u32 > Value::Number(Number::U32(9)));
+        assert!(10u64 < Value::Number(Number::U64(11)));
     }
 
     #[test]
@@ -268,18 +237,18 @@ mod test {
 
         assert_eq!(10.2.to_string(), Number::F64(10.2).to_string());
 
-        assert!(10.2 == CopyValue::Number(Number::F64(10.2)));
-        assert!(10.2 > CopyValue::Number(Number::F64(9.3)));
-        assert!(10.2 < Value::CopyValue(CopyValue::Number(Number::F64(11.3))));
+        assert!(10.2 == Value::Number(Number::F64(10.2)));
+        assert!(10.2 > Value::Number(Number::F64(9.3)));
+        assert!(10.2 < Value::Number(Number::F64(11.3)));
     }
 
     #[test]
     fn cmp_bool() {
-        assert!(true == CopyValue::Bool(true));
+        assert!(true == Value::Bool(true));
         assert!(true > false);
-        assert!(true > Value::CopyValue(CopyValue::Bool(false)));
+        assert!(true > Value::Bool(false));
 
-        assert_eq!(false.to_string(), CopyValue::Bool(false).to_string());
+        assert_eq!(false.to_string(), Value::Bool(false).to_string());
     }
 
     #[test]
@@ -296,11 +265,11 @@ mod test {
 
     #[test]
     fn cmp_char() {
-        assert!('X' == CopyValue::Char('X'));
+        assert!('X' == Value::Char('X'));
         assert!('Y' > 'X');
-        assert!('Y' > Value::CopyValue(CopyValue::Char('X')));
+        assert!('Y' > Value::Char('X'));
 
-        assert_eq!('Z'.to_string(), CopyValue::Char('Z').to_string());
+        assert_eq!('Z'.to_string(), Value::Char('Z').to_string());
     }
 
     #[test]

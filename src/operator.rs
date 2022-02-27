@@ -1,4 +1,4 @@
-use crate::value::{CopyValue, Number, Value};
+use crate::value::{Number, Value};
 use crate::Filterable;
 
 pub type OperatorFn = fn(arg: &dyn Filterable, v: &Value) -> bool;
@@ -71,8 +71,8 @@ fn lt(arg: &dyn Filterable, v: &Value) -> bool {
 
 fn len(arg: &dyn Filterable, v: &Value) -> bool {
     match v {
-        Value::CopyValue(CopyValue::Number(Number::Usize(l))) => arg.to_string().len() == *l,
-        Value::CopyValue(CopyValue::Number(Number::I32(l))) => arg.to_string().len() == *l as usize,
+        Value::Number(Number::Usize(l)) => arg.to_string().len() == *l,
+        Value::Number(Number::I32(l)) => arg.to_string().len() == *l as usize,
         _ => false,
     }
 }
@@ -115,7 +115,7 @@ mod test {
     fn exec_bool() {
         let op = Operators::default();
         let ne = op.get("!=").unwrap();
-        assert!((ne)(&true, &Value::CopyValue(CopyValue::Bool(false))));
+        assert!((ne)(&true, &Value::Bool(false)));
     }
 
     #[test]
@@ -124,7 +124,7 @@ mod test {
         let len = op.get("len").unwrap();
         assert!((len)(
             &String::from("Paul"),
-            &Value::CopyValue(CopyValue::Number(Number::Usize(4)))
+            &Value::Number(Number::Usize(4))
         ));
     }
 
@@ -132,10 +132,7 @@ mod test {
     fn exec_len_str() {
         let op = Operators::default();
         let len = op.get("len").unwrap();
-        assert!((len)(
-            &"Paul",
-            &Value::CopyValue(CopyValue::Number(Number::Usize(4)))
-        ));
+        assert!((len)(&"Paul", &Value::Number(Number::Usize(4))));
     }
 
     #[test]
@@ -157,20 +154,20 @@ mod test {
         assert!((one_of)(&"Paul", &Value::Text("Paul".into())));
     }
 
-    #[test_case("=",  'f', Value::CopyValue(CopyValue::Char('f'))  ; "eq 'f'")]
-    #[test_case("!=",  'g', Value::CopyValue(CopyValue::Char('f'))  ; "ne 'g'")]
-    #[test_case(">",  'g', Value::CopyValue(CopyValue::Char('f'))  ; "gt 'g'")]
-    #[test_case("<",  'a', Value::CopyValue(CopyValue::Char('f'))  ; "lt 'a'")]
+    #[test_case("=",  'f', Value::Char('f')  ; "eq 'f'")]
+    #[test_case("!=",  'g', Value::Char('f')  ; "ne 'g'")]
+    #[test_case(">",  'g', Value::Char('f')  ; "gt 'g'")]
+    #[test_case("<",  'a', Value::Char('f')  ; "lt 'a'")]
     fn ops_char(op: &str, arg: char, val: Value) {
         let ops = Operators::default();
         let exec = ops.get(op).unwrap();
         assert!((exec)(&arg, &val));
     }
 
-    #[test_case("=",  4.2, Value::CopyValue(CopyValue::Number(Number::F32(4.2)))  ; "eq 4.2")]
-    #[test_case("!=",  4.2, Value::CopyValue(CopyValue::Number(Number::F32(5.3)))  ; "ne 4.2")]
-    #[test_case(">",  4.2, Value::CopyValue(CopyValue::Number(Number::F32(3.1)))  ; "gt 4.2")]
-    #[test_case("<",  4.2, Value::CopyValue(CopyValue::Number(Number::F32(5.3)))  ; "lt 4.2")]
+    #[test_case("=",  4.2, Value::Number(Number::F32(4.2))  ; "eq 4.2")]
+    #[test_case("!=",  4.2, Value::Number(Number::F32(5.3))  ; "ne 4.2")]
+    #[test_case(">",  4.2, Value::Number(Number::F32(3.1))  ; "gt 4.2")]
+    #[test_case("<",  4.2, Value::Number(Number::F32(5.3))  ; "lt 4.2")]
     fn ops_f32(op: &str, arg: f32, val: Value) {
         let ops = Operators::default();
         let exec = ops.get(op).unwrap();
