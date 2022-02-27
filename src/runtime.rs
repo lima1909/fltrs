@@ -3,13 +3,13 @@
 use crate::error::FltrError;
 use crate::operator::{OperatorFn, Operators};
 use crate::token::{Ands, Exp, Filter};
-use crate::value::{RefValue, Value};
-use crate::{PathResolver, Result};
+use crate::value::Value;
+use crate::{Filterable, PathResolver, Result};
 
 #[allow(unused_variables)]
 pub(crate) fn create_path_executor<'a, Arg: 'a>(
     exp: Exp,
-    ops: &'a Operators<RefValue<'a>>,
+    ops: &'a Operators,
 ) -> Box<dyn Executor<'a, Arg> + 'a>
 where
     Arg: PathResolver,
@@ -72,10 +72,7 @@ where
     }
 }
 
-fn create_path_and_executor<'a, Arg: 'a>(
-    ands: Ands,
-    ops: &'a Operators<RefValue<'a>>,
-) -> And<'a, Arg>
+fn create_path_and_executor<'a, Arg: 'a>(ands: Ands, ops: &'a Operators) -> And<'a, Arg>
 where
     Arg: PathResolver,
 {
@@ -109,10 +106,7 @@ where
     }
 }
 
-pub struct And<'a, Arg>(
-    pub ExecForObjectPath<'a>,
-    pub Box<dyn Executor<'a, Arg> + 'a>,
-);
+pub struct And<'a, Arg>(pub ExecForObjectPath, pub Box<dyn Executor<'a, Arg> + 'a>);
 
 impl<'a, Arg> Executor<'a, Arg> for And<'a, Arg>
 where
@@ -146,17 +140,17 @@ impl<'a, Arg> Executor<'a, Arg> for Box<dyn Executor<'a, Arg> + 'a> {
     }
 }
 
-pub(crate) struct ExecForValue<Arg> {
+pub(crate) struct ExecForValue {
     value: Value,
-    f: OperatorFn<Arg>,
+    f: OperatorFn,
 }
 
-impl<Arg> ExecForValue<Arg> {
-    pub(crate) fn new(value: Value, f: OperatorFn<Arg>) -> Self {
+impl ExecForValue {
+    pub(crate) fn new(value: Value, f: OperatorFn) -> Self {
         Self { value, f }
     }
 
-    pub(crate) fn from_filter(filter: Filter, ops: Operators<Arg>) -> Self {
+    pub(crate) fn from_filter(filter: Filter, ops: Operators) -> Self {
         match filter {
             Filter::Predicate(p) => ExecForValue::new(p.value.clone(), ops.get(&p.op).unwrap()),
             _ => todo!(),
@@ -164,21 +158,24 @@ impl<Arg> ExecForValue<Arg> {
     }
 }
 
-impl<'a, Arg> Executor<'a, Arg> for ExecForValue<Arg> {
+impl<'a, Arg> Executor<'a, Arg> for ExecForValue
+where
+    Arg: Filterable,
+{
     fn exec(&self, arg: &'a Arg) -> bool {
         (self.f)(arg, &self.value)
     }
 }
 
-pub struct ExecForObjectPath<'a> {
+pub struct ExecForObjectPath {
     path: String,
     index: usize,
     value: Value,
-    f: OperatorFn<RefValue<'a>>,
+    f: OperatorFn,
 }
 
-impl<'a> ExecForObjectPath<'a> {
-    pub(crate) fn new(path: String, value: Value, f: OperatorFn<RefValue<'a>>) -> Self {
+impl ExecForObjectPath {
+    pub(crate) fn new(path: String, value: Value, f: OperatorFn) -> Self {
         Self {
             path,
             index: 0,
@@ -187,7 +184,7 @@ impl<'a> ExecForObjectPath<'a> {
         }
     }
 
-    pub(crate) fn from_filter(filter: Filter, ops: &'a Operators<RefValue<'a>>) -> Self {
+    pub(crate) fn from_filter(filter: Filter, ops: &Operators) -> Self {
         match filter {
             Filter::Predicate(p) => ExecForObjectPath::new(
                 p.path.clone().unwrap(),
@@ -199,7 +196,7 @@ impl<'a> ExecForObjectPath<'a> {
     }
 }
 
-impl<'a, 'pr: 'a, PR: 'pr> Executor<'a, PR> for ExecForObjectPath<'a>
+impl<'a, 'pr: 'a, PR: 'pr> Executor<'a, PR> for ExecForObjectPath
 where
     PR: PathResolver,
 {
@@ -213,7 +210,7 @@ where
 
     fn exec(&self, pr: &'a PR) -> bool {
         let arg = pr.value(self.index);
-        (self.f)(&arg, &self.value)
+        (self.f)(arg, &self.value)
     }
 }
 
@@ -272,8 +269,12 @@ mod test {
             }
         }
 
-        fn value(&self, idx: usize) -> RefValue {
-            [(&self.name).into(), (self.ps).into(), (self.size).into()][idx]
+        fn value(&self, idx: usize) -> &dyn Filterable {
+            match idx {
+                1 => &self.ps,
+                2 => &self.size,
+                _ => &self.name,
+            }
         }
     }
 

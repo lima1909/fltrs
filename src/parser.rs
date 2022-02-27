@@ -14,7 +14,7 @@ pub type TextParserFn = fn(text: &str) -> Value;
 
 pub(crate) struct Parser<'a> {
     s: Scanner<'a>,
-    ops: Operators<bool>,
+    ops: Operators,
     exp: Option<Exp>,
     text_parser_fns: Vec<(&'static str, TextParserFn)>,
 }

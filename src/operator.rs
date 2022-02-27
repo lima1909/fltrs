@@ -1,25 +1,22 @@
 use crate::value::{CopyValue, Number, Value};
-use core::fmt::Display;
+use crate::Filterable;
 
-pub type OperatorFn<Arg> = fn(arg: &Arg, v: &Value) -> bool;
+pub type OperatorFn = fn(arg: &dyn Filterable, v: &Value) -> bool;
 
-pub struct Operators<Arg> {
-    op: Vec<(&'static str, OperatorFn<Arg>)>,
+pub struct Operators {
+    op: Vec<(&'static str, OperatorFn)>,
 }
 
-impl<Arg> Default for Operators<Arg>
-where
-    Arg: PartialEq<Value> + PartialOrd<Value> + Display,
-{
+impl Default for Operators {
     fn default() -> Self {
         Self {
             op: vec![
-                ("=", Arg::eq as OperatorFn<Arg>),
-                ("!=", Arg::ne),
-                ("<=", Arg::le),
-                ("<", Arg::lt),
-                (">=", Arg::gt),
-                (">", Arg::gt),
+                ("=", eq as OperatorFn),
+                ("!=", ne),
+                ("<=", le),
+                ("<", lt),
+                (">=", ge),
+                (">", gt),
                 ("len", len),
                 ("starts_with", starts_with),
                 ("one_of", one_of),
@@ -28,8 +25,8 @@ where
     }
 }
 
-impl<Arg> Operators<Arg> {
-    pub fn get(&self, op: &str) -> Option<OperatorFn<Arg>> {
+impl Operators {
+    pub fn get(&self, op: &str) -> Option<OperatorFn> {
         for (n, f) in &self.op {
             if n == &op {
                 return Some(*f);
@@ -48,7 +45,31 @@ impl<Arg> Operators<Arg> {
     }
 }
 
-fn len<Arg: ToString>(arg: &Arg, v: &Value) -> bool {
+fn eq(arg: &dyn Filterable, v: &Value) -> bool {
+    arg.eq(v)
+}
+
+fn ne(arg: &dyn Filterable, v: &Value) -> bool {
+    arg.ne(v)
+}
+
+fn ge(arg: &dyn Filterable, v: &Value) -> bool {
+    arg.ge(v)
+}
+
+fn gt(arg: &dyn Filterable, v: &Value) -> bool {
+    arg.gt(v)
+}
+
+fn le(arg: &dyn Filterable, v: &Value) -> bool {
+    arg.le(v)
+}
+
+fn lt(arg: &dyn Filterable, v: &Value) -> bool {
+    arg.lt(v)
+}
+
+fn len(arg: &dyn Filterable, v: &Value) -> bool {
     match v {
         Value::CopyValue(CopyValue::Number(Number::Usize(l))) => arg.to_string().len() == *l,
         Value::CopyValue(CopyValue::Number(Number::I32(l))) => arg.to_string().len() == *l as usize,
@@ -56,14 +77,14 @@ fn len<Arg: ToString>(arg: &Arg, v: &Value) -> bool {
     }
 }
 
-fn starts_with<Arg: ToString>(arg: &Arg, v: &Value) -> bool {
+fn starts_with(arg: &dyn Filterable, v: &Value) -> bool {
     if let Value::Text(s) = v {
         return arg.to_string().starts_with(s);
     }
     false
 }
 
-fn one_of<Arg: PartialEq<Value>>(arg: &Arg, v: &Value) -> bool {
+fn one_of(arg: &dyn Filterable, v: &Value) -> bool {
     if let Value::List(vs) = v {
         return vs.iter().filter(|v| arg.eq(*v)).count() > 0;
     }
@@ -77,7 +98,7 @@ mod test {
 
     #[test]
     fn starts_with_valid_op() {
-        let op = Operators::<i32>::default();
+        let op = Operators::default();
         assert_eq!(Some("="), op.starts_with_valid_op("="));
         assert_eq!(Some("="), op.starts_with_valid_op("=7"));
         assert_eq!(None, op.starts_with_valid_op("foo"));
@@ -85,7 +106,7 @@ mod test {
 
     #[test]
     fn get() {
-        let op = Operators::<i32>::default();
+        let op = Operators::default();
         assert!(op.get("=").is_some());
         assert!(op.get("foo").is_none());
     }
