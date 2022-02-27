@@ -9,3 +9,8 @@ edition = "2021"
 
 [dev-dependencies]
 test-case = "2.0.0"
+criterion = "0.3"
+
+[[bench]]
+name = "bench_rt"
+harness = false

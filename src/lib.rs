@@ -31,3 +31,19 @@ impl Filterable for i32 {}
 impl Filterable for i64 {}
 impl Filterable for f32 {}
 impl Filterable for f64 {}
+
+// TODO: remove this function, temporary for benchmarking
+pub fn parse(input: &str) -> std::result::Result<crate::token::Exp, crate::error::ParseError> {
+    crate::parser::parse(input)
+}
+
+// TODO: remove this function, temporary for benchmarking
+pub fn create_path_executor<'a, Arg: 'a>(
+    exp: crate::token::Exp,
+    ops: &'a crate::operator::Operators,
+) -> Box<dyn crate::runtime::Executor<'a, Arg> + 'a>
+where
+    Arg: PathResolver,
+{
+    crate::runtime::create_path_executor(exp, ops)
+}

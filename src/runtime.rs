@@ -6,7 +6,6 @@ use crate::token::{Ands, Exp, Filter};
 use crate::value::Value;
 use crate::{Filterable, PathResolver, Result};
 
-#[allow(unused_variables)]
 pub(crate) fn create_path_executor<'a, Arg: 'a>(
     exp: Exp,
     ops: &'a Operators,

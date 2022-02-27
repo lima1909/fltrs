@@ -3,8 +3,9 @@
 use crate::value::Value;
 use core::fmt::{Debug, Display};
 
+// TODO: remove 'pub', temporary for benchmarking
 #[derive(PartialEq, PartialOrd, Debug)]
-pub(crate) struct Exp {
+pub struct Exp {
     index: usize,
     pub(crate) ands: Vec<Ands>,
 }
