@@ -45,26 +45,32 @@ impl Operators {
     }
 }
 
+#[inline(always)]
 fn eq(arg: &dyn Filterable, v: &Value) -> bool {
     arg.eq(v)
 }
 
+#[inline(always)]
 fn ne(arg: &dyn Filterable, v: &Value) -> bool {
     arg.ne(v)
 }
 
+#[inline(always)]
 fn ge(arg: &dyn Filterable, v: &Value) -> bool {
     arg.ge(v)
 }
 
+#[inline(always)]
 fn gt(arg: &dyn Filterable, v: &Value) -> bool {
     arg.gt(v)
 }
 
+#[inline(always)]
 fn le(arg: &dyn Filterable, v: &Value) -> bool {
     arg.le(v)
 }
 
+#[inline(always)]
 fn lt(arg: &dyn Filterable, v: &Value) -> bool {
     arg.lt(v)
 }

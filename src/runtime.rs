@@ -15,7 +15,7 @@ where
 {
     if exp.ands.len() == 1 && exp.ands[0].is_or() {
         // only one filter
-        Box::new(ExecForObjectPath::from_filter(
+        Box::new(PathExecutor::from_filter(
             exp.ands.into_iter().next().unwrap().filter,
             ops,
         ))
@@ -33,18 +33,18 @@ where
 
         let mut ors: Box<dyn Executor<Arg>>;
         if a1.is_or() && a2.is_or() {
-            ors = Box::new(Or::<ExecForObjectPath, ExecForObjectPath>(
-                ExecForObjectPath::from_filter(a1.filter, ops),
-                ExecForObjectPath::from_filter(a2.filter, ops),
+            ors = Box::new(Or::<PathExecutor, PathExecutor>(
+                PathExecutor::from_filter(a1.filter, ops),
+                PathExecutor::from_filter(a2.filter, ops),
             ));
         } else if a1.is_or() && !a2.is_or() {
-            ors = Box::new(Or::<ExecForObjectPath, And<'a, Arg>>(
-                ExecForObjectPath::from_filter(a1.filter, ops),
+            ors = Box::new(Or::<PathExecutor, And<'a, Arg>>(
+                PathExecutor::from_filter(a1.filter, ops),
                 create_path_and_executor(a2, ops),
             ));
         } else if !a1.is_or() && a2.is_or() {
-            ors = Box::new(Or::<ExecForObjectPath, And<'a, Arg>>(
-                ExecForObjectPath::from_filter(a2.filter, ops),
+            ors = Box::new(Or::<PathExecutor, And<'a, Arg>>(
+                PathExecutor::from_filter(a2.filter, ops),
                 create_path_and_executor(a1, ops),
             ));
         } else {
@@ -56,8 +56,8 @@ where
 
         for ands in it {
             if ands.is_or() {
-                ors = Box::new(Or::<ExecForObjectPath, Box<dyn Executor<Arg>>>(
-                    ExecForObjectPath::from_filter(ands.filter, ops),
+                ors = Box::new(Or::<PathExecutor, Box<dyn Executor<Arg>>>(
+                    PathExecutor::from_filter(ands.filter, ops),
                     ors,
                 ));
             } else {
@@ -78,12 +78,12 @@ where
     let mut it = ands.next.into_iter();
 
     let mut and = And(
-        ExecForObjectPath::from_filter(ands.filter, ops),
-        Box::new(ExecForObjectPath::from_filter(it.next().unwrap(), ops)),
+        PathExecutor::from_filter(ands.filter, ops),
+        Box::new(PathExecutor::from_filter(it.next().unwrap(), ops)),
     );
 
     for next in it {
-        and = And(ExecForObjectPath::from_filter(next, ops), Box::new(and));
+        and = And(PathExecutor::from_filter(next, ops), Box::new(and));
     }
     and
 }
@@ -105,7 +105,7 @@ where
     }
 }
 
-pub struct And<'a, Arg>(pub ExecForObjectPath, pub Box<dyn Executor<'a, Arg> + 'a>);
+pub struct And<'a, Arg>(pub PathExecutor, pub Box<dyn Executor<'a, Arg> + 'a>);
 
 impl<'a, Arg> Executor<'a, Arg> for And<'a, Arg>
 where
@@ -139,25 +139,25 @@ impl<'a, Arg> Executor<'a, Arg> for Box<dyn Executor<'a, Arg> + 'a> {
     }
 }
 
-pub(crate) struct ExecForValue {
+pub(crate) struct ValueExecutor {
     value: Value,
     f: OperatorFn,
 }
 
-impl ExecForValue {
+impl ValueExecutor {
     pub(crate) fn new(value: Value, f: OperatorFn) -> Self {
         Self { value, f }
     }
 
     pub(crate) fn from_filter(filter: Filter, ops: Operators) -> Self {
         match filter {
-            Filter::Predicate(p) => ExecForValue::new(p.value.clone(), ops.get(&p.op).unwrap()),
+            Filter::Predicate(p) => ValueExecutor::new(p.value.clone(), ops.get(&p.op).unwrap()),
             _ => todo!(),
         }
     }
 }
 
-impl<'a, Arg> Executor<'a, Arg> for ExecForValue
+impl<'a, Arg> Executor<'a, Arg> for ValueExecutor
 where
     Arg: Filterable,
 {
@@ -166,14 +166,14 @@ where
     }
 }
 
-pub struct ExecForObjectPath {
+pub struct PathExecutor {
     path: String,
     index: usize,
     value: Value,
     f: OperatorFn,
 }
 
-impl ExecForObjectPath {
+impl PathExecutor {
     pub(crate) fn new(path: String, value: Value, f: OperatorFn) -> Self {
         Self {
             path,
@@ -185,7 +185,7 @@ impl ExecForObjectPath {
 
     pub(crate) fn from_filter(filter: Filter, ops: &Operators) -> Self {
         match filter {
-            Filter::Predicate(p) => ExecForObjectPath::new(
+            Filter::Predicate(p) => PathExecutor::new(
                 p.path.clone().unwrap(),
                 p.value.clone(),
                 ops.get(&p.op).unwrap(),
@@ -195,7 +195,7 @@ impl ExecForObjectPath {
     }
 }
 
-impl<'a, 'pr: 'a, PR: 'pr> Executor<'a, PR> for ExecForObjectPath
+impl<'a, 'pr: 'a, PR: 'pr> Executor<'a, PR> for PathExecutor
 where
     PR: PathResolver,
 {
@@ -204,7 +204,14 @@ where
             self.index = idx;
             return Ok(true);
         }
-        Err(FltrError(format!("invalid path: {}", self.path)))
+        if self.path.is_empty() {
+            Err(FltrError(format!(
+                "by value: '{}', expected not empty path",
+                self.value
+            )))
+        } else {
+            Err(FltrError(format!("invalid path: '{}'", self.path)))
+        }
     }
 
     fn exec(&self, pr: &'a PR) -> bool {
@@ -234,7 +241,7 @@ mod test {
         let mut parser = Parser::new(input);
         let p = predicate()(&mut parser).unwrap();
         let ops = Operators::default();
-        let e = ExecForValue::new(p.value.clone(), ops.get(&p.op).unwrap());
+        let e = ValueExecutor::new(p.value.clone(), ops.get(&p.op).unwrap());
         assert_eq!(expect, e.exec(&7));
     }
 
@@ -248,7 +255,7 @@ mod test {
         let mut parser = Parser::new(input);
         let p = predicate()(&mut parser).unwrap();
         let ops = Operators::default();
-        let e = ExecForValue::new(p.value.clone(), ops.get(&p.op).unwrap());
+        let e = ValueExecutor::new(p.value.clone(), ops.get(&p.op).unwrap());
         assert_eq!(expect, e.exec(&"Jasmin"));
     }
 
@@ -281,12 +288,12 @@ mod test {
     #[test_case("size len 2", true; "len eq 2")]
     #[test_case("ps > 140", true; "ps gt 140")]
     #[test_case(r#"name = "BMW""#, true; "name eq BMW")]
-    #[test_case(r#"name < "bmw""#, true; "name lt bmw")]
+    #[test_case(r#"name < "bmw""#, true; "ne bmw")]
     fn path_exec(input: &str, expect: bool) {
+        let ops = Operators::default();
         let mut parser = Parser::new(input);
         let p = predicate()(&mut parser).unwrap();
-        let ops = Operators::default();
-        let mut e = ExecForObjectPath::new(
+        let mut e = PathExecutor::new(
             p.path.clone().unwrap(),
             p.value.clone(),
             ops.get(&p.op).unwrap(),
@@ -371,5 +378,25 @@ mod test {
         let mut ex = create_path_executor(exp, &ops);
         let _ = ex.prepare(&car).unwrap();
         assert_eq!(expect, ex.exec(&car));
+    }
+
+    #[test_case(r#"= "bmw""#, FltrError("by value: 'bmw', expected not empty path".into()); "empty path")]
+    #[test_case(r#"foo = "bmw""#, FltrError("invalid path: 'foo'".into()); "invalid path")]
+    fn no_path_exec(input: &str, err: FltrError) {
+        let ops = Operators::default();
+        let mut parser = Parser::new(input);
+        let p = predicate()(&mut parser).unwrap();
+        let mut e = PathExecutor::new(
+            p.path.unwrap_or_default(),
+            p.value.clone(),
+            ops.get(&p.op).unwrap(),
+        );
+
+        let car = Car {
+            name: "BMW",
+            ps: 142,
+            size: 54,
+        };
+        assert_eq!(err, e.prepare(&car).err().unwrap());
     }
 }
