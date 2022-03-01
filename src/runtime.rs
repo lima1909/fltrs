@@ -2,7 +2,7 @@
 
 use crate::error::FltrError;
 use crate::operator::{OperatorFn, Operators};
-use crate::token::{Ands, Exp, Filter};
+use crate::token::{Ands, Exp, Filter, Predicate};
 use crate::value::Value;
 use crate::{Filterable, PathResolver, Result};
 
@@ -88,6 +88,37 @@ where
     and
 }
 
+pub(crate) struct Runtime<'a, Arg> {
+    executor: Box<dyn Executor<'a, Arg> + 'a>,
+}
+
+impl<'a, Arg: 'a> Runtime<'a, Arg> {
+    fn new<P: FromPredicate<'a, Arg>>(exp: Exp, ops: &'a Operators) -> Self {
+        if exp.ands.len() == 1 && exp.ands[0].is_or() {
+            let filter = exp.ands.into_iter().next().unwrap().filter;
+            let executor: Box<dyn Executor<Arg>> = match filter {
+                Filter::Predicate(p) => Box::new(P::from_predicate(p, ops)),
+                // Filter::Nested(exp) => Box::new(Runtime::<Arg>::new(exp, ops)),
+                // Filter::Not(exp) => Box::new(Runtime::<Arg>::new(exp, ops)),
+                _ => todo!(),
+            };
+            Self { executor }
+        } else {
+            unimplemented!()
+        }
+    }
+}
+
+impl<'a, Arg: 'a> Executor<'a, Arg> for Runtime<'a, Arg> {
+    fn prepare(&mut self, arg: &'a Arg) -> Result<bool> {
+        self.executor.prepare(arg)
+    }
+
+    fn exec(&self, arg: &'a Arg) -> bool {
+        self.executor.exec(arg)
+    }
+}
+
 pub struct Or<L, R>(L, R);
 
 impl<'a, L, R, Arg> Executor<'a, Arg> for Or<L, R>
@@ -139,21 +170,40 @@ impl<'a, Arg> Executor<'a, Arg> for Box<dyn Executor<'a, Arg> + 'a> {
     }
 }
 
+trait FromPredicate<'a, Arg> {
+    fn from_predicate(p: Predicate, ops: &'a Operators) -> Box<dyn Executor<Arg> + 'a>;
+}
+
 pub(crate) struct ValueExecutor {
     value: Value,
     f: OperatorFn,
 }
 
 impl ValueExecutor {
+    #[inline]
     pub(crate) fn new(value: Value, f: OperatorFn) -> Self {
         Self { value, f }
     }
 
+    // TODO: remove this function
     pub(crate) fn from_filter(filter: Filter, ops: Operators) -> Self {
         match filter {
             Filter::Predicate(p) => ValueExecutor::new(p.value.clone(), ops.get(&p.op).unwrap()),
             _ => todo!(),
         }
+    }
+}
+
+impl<'a, Arg> FromPredicate<'a, Arg> for ValueExecutor
+where
+    Arg: Filterable,
+{
+    fn from_predicate(p: Predicate, ops: &'a Operators) -> Box<dyn Executor<Arg> + 'a> {
+        Box::new(Self::new(
+            p.value,
+            ops.get(&p.op)
+                .expect("Predicate must be contains a valid operation"),
+        ))
     }
 }
 
@@ -183,6 +233,7 @@ impl PathExecutor {
         }
     }
 
+    // TODO: remove this function
     pub(crate) fn from_filter(filter: Filter, ops: &Operators) -> Self {
         match filter {
             Filter::Predicate(p) => PathExecutor::new(
@@ -192,6 +243,20 @@ impl PathExecutor {
             ),
             _ => todo!(),
         }
+    }
+}
+
+impl<'a, Arg> FromPredicate<'a, Arg> for PathExecutor
+where
+    Arg: PathResolver + 'a,
+{
+    fn from_predicate(p: Predicate, ops: &'a Operators) -> Box<dyn Executor<Arg> + 'a> {
+        Box::new(Self::new(
+            p.path.expect("Predicate must be contains a path"),
+            p.value,
+            ops.get(&p.op)
+                .expect("Predicate must be contains a valid operation"),
+        ))
     }
 }
 
@@ -237,7 +302,7 @@ mod test {
     #[test_case("= 8", false; "eq 8")]
     #[test_case("> 7", false; "gt 7")]
     #[test_case("< 7", false; "lt 7")]
-    fn simple_exec_i32(input: &str, expect: bool) {
+    fn value_executor_i32(input: &str, expect: bool) {
         let mut parser = Parser::new(input);
         let p = predicate()(&mut parser).unwrap();
         let ops = Operators::default();
@@ -250,7 +315,7 @@ mod test {
     #[test_case(r#"> "Ina""#, true; "lt Ina")]
     #[test_case(r#"len 6"#, true; "len 6")]
     #[test_case(r#"starts_with "J""#, true; "starts_with J")]
-    fn simple_exec_string(input: &str, expect: bool) {
+    fn value_executor_string(input: &str, expect: bool) {
         // assert!('c' > 'C');
         let mut parser = Parser::new(input);
         let p = predicate()(&mut parser).unwrap();
@@ -398,5 +463,37 @@ mod test {
             size: 54,
         };
         assert_eq!(err, e.prepare(&car).err().unwrap());
+    }
+
+    // --------- Runtime -------------
+    #[test_case(r#"= "Jasmin""#, true; "eq Jasmin")]
+    #[test_case(r#"< "jasmin""#, true; "lt jasmin")]
+    #[test_case(r#"> "Ina""#, true; "lt Ina")]
+    #[test_case(r#"len 6"#, true; "len 6")]
+    #[test_case(r#"starts_with "J""#, true; "starts_with J")]
+    fn runtime_executor_value_string(input: &str, expect: bool) {
+        let ops = Operators::default();
+        let exp = parse(input).unwrap();
+        let rt = Runtime::new::<ValueExecutor>(exp, &ops);
+        assert_eq!(expect, rt.exec(&"Jasmin"));
+    }
+
+    #[test_case(r#"name = "BMW" "#, true; "name eq BMW")]
+    #[test_case(r#"name starts_with "BM" "#, true; "name starts_with BM")]
+    #[test_case(r#"name != "Audi" "#, true; "name ne Audi")]
+    #[test_case(r#"ps >= 142 "#, true; "ps ge 142")]
+    #[test_case(r#"ps > 141 "#, true; "ps gt 141")]
+    fn runtime_executor_path_string(input: &str, expect: bool) {
+        let car = Car {
+            name: "BMW",
+            ps: 142,
+            size: 54,
+        };
+
+        let ops = Operators::default();
+        let exp = parse(input).unwrap();
+        let mut rt = Runtime::new::<PathExecutor>(exp, &ops);
+        let _ = rt.prepare(&car);
+        assert_eq!(expect, rt.exec(&car));
     }
 }
