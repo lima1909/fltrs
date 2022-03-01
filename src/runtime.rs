@@ -95,13 +95,15 @@ pub(crate) struct Runtime<'a, Arg> {
 impl<'a, Arg: 'a> Runtime<'a, Arg> {
     fn new<P: FromPredicate<'a, Arg>>(exp: Exp, ops: &'a Operators) -> Self {
         if exp.ands.len() == 1 && exp.ands[0].is_or() {
+            // only one filter
             let filter = exp.ands.into_iter().next().unwrap().filter;
-            let executor: Box<dyn Executor<Arg>> = match filter {
-                Filter::Predicate(p) => Box::new(P::from_predicate(p, ops)),
-                Filter::Nested(exp) => Box::new(Runtime::<Arg>::new::<P>(exp, ops)),
-                Filter::Not(exp) => Box::new(Not(Runtime::<Arg>::new::<P>(exp, ops))),
-            };
-            Self { executor }
+            Self {
+                executor: match filter {
+                    Filter::Predicate(p) => Box::new(P::from_predicate(p, ops)),
+                    Filter::Nested(exp) => Box::new(Runtime::<Arg>::new::<P>(exp, ops)),
+                    Filter::Not(exp) => Box::new(Not(Runtime::<Arg>::new::<P>(exp, ops))),
+                },
+            }
         } else {
             unimplemented!()
         }
@@ -483,6 +485,7 @@ mod test {
     #[test_case(r#"len 6"#, true; "len 6")]
     #[test_case(r#"not(len 9)"#, true; "not len 9")]
     #[test_case(r#"starts_with "J""#, true; "starts_with J")]
+    #[test_case(r#"(!= "Inge")"#, true; "nested ne Inge")]
     fn runtime_executor_value_string(input: &str, expect: bool) {
         let ops = Operators::default();
         let exp = parse(input).unwrap();
@@ -497,6 +500,7 @@ mod test {
     #[test_case(r#"ps >= 142 "#, true; "ps ge 142")]
     #[test_case(r#"ps > 141 "#, true; "ps gt 141")]
     #[test_case(r#"not(size > 141)"#, true; "not size gt 141")]
+    #[test_case(r#"(size <= 141)"#, true; "nested size le 141")]
     fn runtime_executor_path_string(input: &str, expect: bool) {
         let car = Car {
             name: "BMW",
