@@ -98,9 +98,8 @@ impl<'a, Arg: 'a> Runtime<'a, Arg> {
             let filter = exp.ands.into_iter().next().unwrap().filter;
             let executor: Box<dyn Executor<Arg>> = match filter {
                 Filter::Predicate(p) => Box::new(P::from_predicate(p, ops)),
-                // Filter::Nested(exp) => Box::new(Runtime::<Arg>::new(exp, ops)),
-                // Filter::Not(exp) => Box::new(Runtime::<Arg>::new(exp, ops)),
-                _ => todo!(),
+                Filter::Nested(exp) => Box::new(Runtime::<Arg>::new::<P>(exp, ops)),
+                Filter::Not(exp) => Box::new(Not(Runtime::<Arg>::new::<P>(exp, ops))),
             };
             Self { executor }
         } else {
@@ -116,6 +115,18 @@ impl<'a, Arg: 'a> Executor<'a, Arg> for Runtime<'a, Arg> {
 
     fn exec(&self, arg: &'a Arg) -> bool {
         self.executor.exec(arg)
+    }
+}
+
+struct Not<'a, Arg>(Runtime<'a, Arg>);
+
+impl<'a, Arg: 'a> Executor<'a, Arg> for Not<'a, Arg> {
+    fn prepare(&mut self, arg: &'a Arg) -> Result<bool> {
+        self.0.prepare(arg)
+    }
+
+    fn exec(&self, arg: &'a Arg) -> bool {
+        !self.0.exec(arg)
     }
 }
 
@@ -470,6 +481,7 @@ mod test {
     #[test_case(r#"< "jasmin""#, true; "lt jasmin")]
     #[test_case(r#"> "Ina""#, true; "lt Ina")]
     #[test_case(r#"len 6"#, true; "len 6")]
+    #[test_case(r#"not(len 9)"#, true; "not len 9")]
     #[test_case(r#"starts_with "J""#, true; "starts_with J")]
     fn runtime_executor_value_string(input: &str, expect: bool) {
         let ops = Operators::default();
@@ -479,10 +491,12 @@ mod test {
     }
 
     #[test_case(r#"name = "BMW" "#, true; "name eq BMW")]
-    #[test_case(r#"name starts_with "BM" "#, true; "name starts_with BM")]
     #[test_case(r#"name != "Audi" "#, true; "name ne Audi")]
+    #[test_case(r#"not(name = "Audi") "#, true; "not name eq Audi")]
+    #[test_case(r#"not(name = "BMW") "#, false; "not name eq BMW")]
     #[test_case(r#"ps >= 142 "#, true; "ps ge 142")]
     #[test_case(r#"ps > 141 "#, true; "ps gt 141")]
+    #[test_case(r#"not(size > 141)"#, true; "not size gt 141")]
     fn runtime_executor_path_string(input: &str, expect: bool) {
         let car = Car {
             name: "BMW",
