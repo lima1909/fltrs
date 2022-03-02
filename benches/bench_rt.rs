@@ -24,7 +24,24 @@ fn rt_exp(c: &mut Criterion) {
     });
 }
 
-fn std_rust(c: &mut Criterion) {
+fn rt_exp2(c: &mut Criterion) {
+    use fltrs::exec;
+
+    let ps = get_points();
+
+    c.bench_function("rt.Exp2", |b| {
+        b.iter(|| {
+            assert_eq!(
+                24,
+                ps.iter()
+                    .filter(|p| exec(r#"x = 42 or name = "Point""#, *p).unwrap())
+                    .count()
+            );
+        })
+    });
+}
+
+fn _std_rust(c: &mut Criterion) {
     let ps = get_points();
     let pp = String::from("Point");
 
@@ -38,7 +55,7 @@ fn std_rust(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, std_rust, rt_exp);
+criterion_group!(benches, rt_exp, rt_exp2);
 criterion_main!(benches);
 
 struct Point {

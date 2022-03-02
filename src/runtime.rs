@@ -93,7 +93,7 @@ pub(crate) struct Runtime<'a, Arg> {
 }
 
 impl<'a, Arg: 'a> Runtime<'a, Arg> {
-    fn new<P: FromPredicate<'a, Arg>>(exp: Exp, ops: &'a Operators) -> Self {
+    pub(crate) fn new<P: FromPredicate<'a, Arg>>(exp: Exp, ops: &'a Operators) -> Self {
         let len = exp.ands.len();
         let mut it = exp.ands.into_iter();
 
@@ -111,7 +111,41 @@ impl<'a, Arg: 'a> Runtime<'a, Arg> {
                 }
             }
         } else {
-            unimplemented!()
+            // at least two ANDs
+            let a1 = it.next().unwrap();
+            let a2 = it.next().unwrap();
+
+            let mut ors: Box<dyn Executor<Arg>>;
+            if a1.is_or() && a2.is_or() {
+                ors = Box::new(Or2(
+                    Runtime::match_filter::<P>(a1.filter, ops),
+                    Runtime::match_filter::<P>(a2.filter, ops),
+                ));
+            } else if a1.is_or() && !a2.is_or() {
+                ors = Box::new(Or2(
+                    Runtime::match_filter::<P>(a1.filter, ops),
+                    Runtime::ands::<P>(a2, ops),
+                ));
+            } else if !a1.is_or() && a2.is_or() {
+                ors = Box::new(Or2(
+                    Runtime::match_filter::<P>(a2.filter, ops),
+                    Runtime::ands::<P>(a1, ops),
+                ));
+            } else {
+                ors = Box::new(Or2(
+                    Runtime::ands::<P>(a1, ops),
+                    Runtime::ands::<P>(a2, ops),
+                ));
+            }
+
+            for ands in it {
+                if ands.is_or() {
+                    ors = Box::new(Or2(Runtime::match_filter::<P>(ands.filter, ops), ors));
+                } else {
+                    ors = Box::new(Or2(Runtime::ands::<P>(ands, ops), ors));
+                }
+            }
+            Self { executor: ors }
         }
     }
 
@@ -167,6 +201,7 @@ impl<'a, Arg: 'a> Executor<'a, Arg> for Not<'a, Arg> {
     }
 }
 
+// TODO. remove
 pub struct Or<L, R>(L, R);
 
 impl<'a, L, R, Arg> Executor<'a, Arg> for Or<L, R>
@@ -174,6 +209,22 @@ where
     L: Executor<'a, Arg>,
     R: Executor<'a, Arg>,
 {
+    fn prepare(&mut self, arg: &'a Arg) -> Result<bool> {
+        self.0.prepare(arg)?;
+        self.1.prepare(arg)
+    }
+
+    fn exec(&self, arg: &'a Arg) -> bool {
+        self.0.exec(arg) || self.1.exec(arg)
+    }
+}
+
+pub struct Or2<'a, Arg>(
+    pub Box<dyn Executor<'a, Arg> + 'a>,
+    pub Box<dyn Executor<'a, Arg> + 'a>,
+);
+
+impl<'a, Arg> Executor<'a, Arg> for Or2<'a, Arg> {
     fn prepare(&mut self, arg: &'a Arg) -> Result<bool> {
         self.0.prepare(arg)?;
         self.1.prepare(arg)
@@ -235,7 +286,7 @@ impl<'a, Arg> Executor<'a, Arg> for Box<dyn Executor<'a, Arg> + 'a> {
     }
 }
 
-trait FromPredicate<'a, Arg> {
+pub(crate) trait FromPredicate<'a, Arg> {
     fn from_predicate(p: Predicate, ops: &'a Operators) -> Box<dyn Executor<Arg> + 'a>;
 }
 
@@ -334,6 +385,7 @@ where
             self.index = idx;
             return Ok(true);
         }
+
         if self.path.is_empty() {
             Err(FltrError(format!(
                 "by value: '{}', expected not empty path",
@@ -441,7 +493,7 @@ mod test {
     #[test_case(r#"name = "BMW" "#, true; "name eq BMW")]
     #[test_case(r#"name starts_with "BM" "#, true; "name starts_with BM")]
     #[test_case(r#"name != "Audi" "#, true; "name ne Audi")]
-    fn create_path_executor_simple(input: &str, expect: bool) {
+    fn rt_path_executor_simple(input: &str, expect: bool) {
         let ops = Operators::default();
         let exp = parse(input).unwrap();
 
@@ -451,14 +503,14 @@ mod test {
             size: 54,
         };
 
-        let mut ex = create_path_executor(exp, &ops);
-        let _ = ex.prepare(&car).unwrap();
-        assert_eq!(expect, ex.exec(&car));
+        let mut rt = Runtime::new::<PathExecutor>(exp, &ops);
+        let _ = rt.prepare(&car).unwrap();
+        assert_eq!(expect, rt.exec(&car));
     }
 
     #[test_case(r#"name = "BMW" and ps > 100"#, true; "name eq BMW and ps gt 100")]
     #[test_case(r#"name = "BMW" and ps > 100 and size len 2"#, true; "name eq BMW and ps gt 100 and size len 2")]
-    fn create_path_executor_ands(input: &str, expect: bool) {
+    fn rt_path_executor_ands(input: &str, expect: bool) {
         let ops = Operators::default();
         let exp = parse(input).unwrap();
 
@@ -468,16 +520,16 @@ mod test {
             size: 54,
         };
 
-        let mut ex = create_path_executor(exp, &ops);
-        let _ = ex.prepare(&car).unwrap();
-        assert_eq!(expect, ex.exec(&car));
+        let mut rt = Runtime::new::<PathExecutor>(exp, &ops);
+        let _ = rt.prepare(&car).unwrap();
+        assert_eq!(expect, rt.exec(&car));
     }
 
     #[test_case(r#"name = "BMW" or ps > 100"#, true; "name eq BMW or ps gt 100")]
     #[test_case(r#"name = "Audi" or ps > 100"#, true; "name eq Audi or ps gt 100")]
     #[test_case(r#"name = "Audi" or size = 200 or ps = 142"#, true; "3 ors")]
     #[test_case(r#"name = "Audi" or size = 200"#, false; "name eq Audi or size eq 200")]
-    fn create_path_executor_ors(input: &str, expect: bool) {
+    fn rt_path_executor_ors(input: &str, expect: bool) {
         let ops = Operators::default();
         let exp = parse(input).unwrap();
 
@@ -487,15 +539,15 @@ mod test {
             size: 54,
         };
 
-        let mut ex = create_path_executor(exp, &ops);
-        let _ = ex.prepare(&car).unwrap();
-        assert_eq!(expect, ex.exec(&car));
+        let mut rt = Runtime::new::<PathExecutor>(exp, &ops);
+        let _ = rt.prepare(&car).unwrap();
+        assert_eq!(expect, rt.exec(&car));
     }
 
     #[test_case(r#"name = "BMW" and ps != 100 or size = 54"#, true; "and or")]
     #[test_case(r#"name = "Audi" or ps = 142 and size = 54 or size > 100"#, true; "false || true && true || false -> true")]
     #[test_case(r#"name = "BMW" or ps = 142 and size = 158 or size > 100"#, true; "true || true && false || false -> true")]
-    fn create_path_executor_ors_ands(input: &str, expect: bool) {
+    fn rt_path_executor_ors_ands(input: &str, expect: bool) {
         let ops = Operators::default();
         let exp = parse(input).unwrap();
 
@@ -505,9 +557,9 @@ mod test {
             size: 54,
         };
 
-        let mut ex = create_path_executor(exp, &ops);
-        let _ = ex.prepare(&car).unwrap();
-        assert_eq!(expect, ex.exec(&car));
+        let mut rt = Runtime::new::<PathExecutor>(exp, &ops);
+        let _ = rt.prepare(&car).unwrap();
+        assert_eq!(expect, rt.exec(&car));
     }
 
     #[test_case(r#"= "bmw""#, FltrError("by value: 'bmw', expected not empty path".into()); "empty path")]
@@ -530,7 +582,6 @@ mod test {
         assert_eq!(err, e.prepare(&car).err().unwrap());
     }
 
-    // --------- Runtime -------------
     #[test_case(r#"= "Jasmin""#, true; "eq Jasmin")]
     #[test_case(r#"< "jasmin""#, true; "lt jasmin")]
     #[test_case(r#"> "Ina""#, true; "lt Ina")]
@@ -539,9 +590,10 @@ mod test {
     #[test_case(r#"starts_with "J""#, true; "starts_with J")]
     #[test_case(r#"(!= "Inge")"#, true; "nested ne Inge")]
     #[test_case(r#"!= "Inge" and != "Paul""#, true; "ne Inge and ne Paul")]
+    #[test_case(r#"= "Paul" or = "Jasmin""#, true; "eq Paul or eq Jasmin")]
     #[test_case(r#"!= "Inge" and != "Paul" and != "Peter""#, true; "ne Inge and ne Paul and ne Peter")]
     #[test_case(r#"!= "Inge" and (!= "Paul" and != "Peter")"#, true; "nested ne Inge and ne Paul and ne Peter")]
-    fn runtime_executor_value_string(input: &str, expect: bool) {
+    fn rt_executor_value_string(input: &str, expect: bool) {
         let ops = Operators::default();
         let exp = parse(input).unwrap();
         let rt = Runtime::new::<ValueExecutor>(exp, &ops);
@@ -557,9 +609,11 @@ mod test {
     #[test_case(r#"not(size > 141)"#, true; "not size gt 141")]
     #[test_case(r#"(size <= 141)"#, true; "nested size le 141")]
     #[test_case(r#"size <= 54 and ps >= 142"#, true; "size le 54 and ps ge 142")]
+    #[test_case(r#"size < 54 or ps >= 142"#, true; "size lt 54 or ps ge 142")]
     #[test_case(r#"size = 54 and ps = 142 and name = "BMW" "#, true; "size le 54 and ps ge 142 and name eq BMW")]
-    #[test_case(r#"size = 54 and (ps = 142 and name = "BMW") "#, true; "nested size le 54 and ps ge 142 and name eq BMW")]
-    fn runtime_executor_path_string(input: &str, expect: bool) {
+    #[test_case(r#"size = 54 and (ps = 142 and name = "BMW") "#, true; "nested size eq 54 and ps ge 142 and name eq BMW")]
+    #[test_case(r#"size = 54 and (ps = 500 or name = "BMW") "#, true; "nested size eq 54 and ps eq 500 or name eq BMW")]
+    fn rt_executor_path_string(input: &str, expect: bool) {
         let car = Car {
             name: "BMW",
             ps: 142,

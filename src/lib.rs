@@ -47,3 +47,19 @@ where
 {
     crate::runtime::create_path_executor(exp, ops)
 }
+
+pub fn exec<'a, Arg: 'a>(
+    input: &str,
+    arg: &'a Arg,
+) -> std::result::Result<bool, Box<dyn std::error::Error>>
+where
+    Arg: PathResolver + 'a,
+{
+    use runtime::*;
+
+    let exp = parse(input)?;
+    let ops = operator::Operators::default();
+    let mut rt = Runtime::<Arg>::new::<PathExecutor>(exp, &ops);
+    rt.prepare(arg)?;
+    Ok(rt.exec(arg))
+}
