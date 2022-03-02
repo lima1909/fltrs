@@ -1,7 +1,7 @@
 pub mod error;
 pub mod operator;
 mod parser;
-mod runtime;
+pub mod runtime;
 mod scanner;
 mod token;
 pub mod value;
@@ -50,16 +50,13 @@ where
 
 pub fn exec<'a, Arg: 'a>(
     input: &str,
-    arg: &'a Arg,
-) -> std::result::Result<bool, Box<dyn std::error::Error>>
+    ops: &'a crate::operator::Operators,
+) -> impl crate::runtime::Executor<'a, Arg>
 where
     Arg: PathResolver + 'a,
 {
     use runtime::*;
 
-    let exp = parse(input)?;
-    let ops = operator::Operators::default();
-    let mut rt = Runtime::<Arg>::new::<PathExecutor>(exp, &ops);
-    rt.prepare(arg)?;
-    Ok(rt.exec(arg))
+    let exp = parse(input).unwrap();
+    Runtime::<Arg>::new::<PathExecutor>(exp, ops)
 }

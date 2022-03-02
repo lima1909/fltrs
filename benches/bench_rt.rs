@@ -26,17 +26,23 @@ fn rt_exp(c: &mut Criterion) {
 
 fn rt_exp2(c: &mut Criterion) {
     use fltrs::exec;
+    use fltrs::operator::Operators;
+    use fltrs::runtime::Executor;
 
     let ps = get_points();
 
+    let p = Point {
+        name: "Foo".into(),
+        x: 5,
+    };
+
+    let ops = Operators::default();
+    let mut rt = exec(r#"x = 42 or name = "Point""#, &ops);
+    rt.prepare(&p).unwrap();
+
     c.bench_function("rt.Exp2", |b| {
         b.iter(|| {
-            assert_eq!(
-                24,
-                ps.iter()
-                    .filter(|p| exec(r#"x = 42 or name = "Point""#, *p).unwrap())
-                    .count()
-            );
+            assert_eq!(24, ps.iter().filter(|p| rt.exec(*p)).count());
         })
     });
 }
