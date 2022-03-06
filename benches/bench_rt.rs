@@ -24,7 +24,7 @@ fn rt_exp(c: &mut Criterion) {
     });
 }
 
-fn rt_exp2(c: &mut Criterion) {
+fn _rt_exp2(c: &mut Criterion) {
     use fltrs::exec;
     use fltrs::operator::Operators;
     use fltrs::runtime::Executor;
@@ -47,6 +47,29 @@ fn rt_exp2(c: &mut Criterion) {
     });
 }
 
+fn rt_exp_new(c: &mut Criterion) {
+    use fltrs::exec_new;
+    use fltrs::operator::Operators;
+    use fltrs::runtime::Executor;
+
+    let ps = get_points();
+
+    let p = Point {
+        name: "Foo".into(),
+        x: 5,
+    };
+
+    let ops = Operators::default();
+    let mut rt = exec_new(r#"x = 42 or name = "Point" "#, &ops);
+    rt.prepare(&p).unwrap();
+
+    c.bench_function("rt.Exp_new", |b| {
+        b.iter(|| {
+            assert_eq!(24, ps.iter().filter(|p| rt.exec(*p)).count());
+        })
+    });
+}
+
 fn _std_rust(c: &mut Criterion) {
     let ps = get_points();
     let pp = String::from("Point");
@@ -61,7 +84,7 @@ fn _std_rust(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, rt_exp, rt_exp2);
+criterion_group!(benches, rt_exp, rt_exp_new);
 criterion_main!(benches);
 
 struct Point {

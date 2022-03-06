@@ -2,6 +2,7 @@ pub mod error;
 pub mod operator;
 mod parser;
 pub mod runtime;
+mod runtime_new;
 mod scanner;
 mod token;
 pub mod value;
@@ -59,4 +60,15 @@ where
 
     let exp = parse(input).unwrap();
     Runtime::<Arg>::new::<PathExecutor>(exp, ops)
+}
+
+pub fn exec_new<'a, Arg: 'a>(
+    input: &str,
+    ops: &'a crate::operator::Operators,
+) -> Box<dyn crate::runtime::Executor<'a, Arg> + 'a>
+where
+    Arg: PathResolver + 'a,
+{
+    let exp = parse(input).unwrap();
+    crate::runtime_new::new::<crate::runtime::PathExecutor, Arg>(exp, ops)
 }

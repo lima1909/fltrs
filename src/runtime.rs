@@ -93,7 +93,10 @@ pub(crate) struct Runtime<'a, Arg> {
 }
 
 impl<'a, Arg: 'a> Runtime<'a, Arg> {
-    pub(crate) fn new<P: FromPredicate<'a, Arg>>(exp: Exp, ops: &'a Operators) -> Self {
+    pub(crate) fn new<P: 'a>(exp: Exp, ops: &'a Operators) -> Self
+    where
+        P: FromPredicate<'a, Arg>,
+    {
         let len = exp.ands.len();
         let mut it = exp.ands.into_iter();
 
@@ -149,10 +152,10 @@ impl<'a, Arg: 'a> Runtime<'a, Arg> {
         }
     }
 
-    fn ands<P: FromPredicate<'a, Arg>>(
-        ands: Ands,
-        ops: &'a Operators,
-    ) -> Box<dyn Executor<'a, Arg> + 'a> {
+    fn ands<P: 'a>(ands: Ands, ops: &'a Operators) -> Box<dyn Executor<'a, Arg> + 'a>
+    where
+        P: FromPredicate<'a, Arg>,
+    {
         let mut it = ands.next.into_iter();
 
         let mut and = And2(
@@ -167,10 +170,10 @@ impl<'a, Arg: 'a> Runtime<'a, Arg> {
         Box::new(and)
     }
 
-    fn match_filter<P: FromPredicate<'a, Arg>>(
-        filter: Filter,
-        ops: &'a Operators,
-    ) -> Box<dyn Executor<'a, Arg> + 'a> {
+    fn match_filter<P: 'a>(filter: Filter, ops: &'a Operators) -> Box<dyn Executor<'a, Arg> + 'a>
+    where
+        P: FromPredicate<'a, Arg>,
+    {
         match filter {
             Filter::Predicate(p) => Box::new(P::from_predicate(p, ops)),
             Filter::Nested(exp) => Box::new(Runtime::<Arg>::new::<P>(exp, ops)),
@@ -286,8 +289,12 @@ impl<'a, Arg> Executor<'a, Arg> for Box<dyn Executor<'a, Arg> + 'a> {
     }
 }
 
-pub(crate) trait FromPredicate<'a, Arg> {
-    fn from_predicate(p: Predicate, ops: &'a Operators) -> Box<dyn Executor<Arg> + 'a>;
+// pub(crate) trait FromPredicate<'a, Arg> {
+//     fn from_predicate(p: Predicate, ops: &'a Operators) -> Box<dyn Executor<Arg> + 'a>;
+// }
+
+pub(crate) trait FromPredicate<'a, Arg>: Executor<'a, Arg> {
+    fn from_predicate(p: Predicate, ops: &'a Operators) -> Self;
 }
 
 pub(crate) struct ValueExecutor {
@@ -314,12 +321,12 @@ impl<'a, Arg> FromPredicate<'a, Arg> for ValueExecutor
 where
     Arg: Filterable,
 {
-    fn from_predicate(p: Predicate, ops: &'a Operators) -> Box<dyn Executor<Arg> + 'a> {
-        Box::new(Self::new(
+    fn from_predicate(p: Predicate, ops: &'a Operators) -> Self {
+        Self::new(
             p.value,
             ops.get(&p.op)
                 .expect("Predicate must be contains a valid operation"),
-        ))
+        )
     }
 }
 
@@ -366,13 +373,13 @@ impl<'a, Arg> FromPredicate<'a, Arg> for PathExecutor
 where
     Arg: PathResolver + 'a,
 {
-    fn from_predicate(p: Predicate, ops: &'a Operators) -> Box<dyn Executor<Arg> + 'a> {
-        Box::new(Self::new(
+    fn from_predicate(p: Predicate, ops: &'a Operators) -> Self {
+        Self::new(
             p.path.expect("Predicate must be contains a path"),
             p.value,
             ops.get(&p.op)
                 .expect("Predicate must be contains a valid operation"),
-        ))
+        )
     }
 }
 
