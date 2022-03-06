@@ -519,7 +519,9 @@ mod test {
     #[test_case("= 1 and = 2 and = 3  or !=  4", "= 1 and = 2 and = 3 or != 4")]
     #[test_case("= 1  or =   2 or =   3  and !=  4", "= 1 or = 2 or = 3 and != 4")]
     fn parse_check(input: &str, display: &str) {
-        assert_eq!(display, format!("{}", parse(input).unwrap()));
+        let exp = parse(input).unwrap();
+        assert!(!exp.is_nested());
+        assert_eq!(display, format!("{}", exp));
     }
 
     #[test_case("not(= true)", "not(= true)")]
@@ -534,7 +536,9 @@ mod test {
         "not(= true or != false) and = false"
     )]
     fn parse_not_check(input: &str, display: &str) {
-        assert_eq!(display, format!("{}", parse(input).unwrap()));
+        let exp = parse(input).unwrap();
+        assert!(exp.is_nested());
+        assert_eq!(display, format!("{}", exp));
     }
 
     #[test_case(
@@ -552,7 +556,9 @@ mod test {
     #[test_case("= false and (= true or != false)", "= false and (= true or != false)")]
     #[test_case("(= true or != false) and = false", "(= true or != false) and = false")]
     fn parse_nested_check(input: &str, display: &str) {
-        assert_eq!(display, format!("{}", parse(input).unwrap()));
+        let exp = parse(input).unwrap();
+        assert!(exp.is_nested());
+        assert_eq!(display, format!("{}", exp));
     }
 
     #[test_case(
@@ -572,7 +578,9 @@ mod test {
     #[test_case("= 1 and (not(= 5) or = 6)", "= 1 and (not(= 5) or = 6)")]
     #[test_case("= 0 or not(= 1 and (= 5 or = 6))", "= 0 or not(= 1 and (= 5 or = 6))")]
     fn parse_nested_and_not_check(input: &str, display: &str) {
-        assert_eq!(display, format!("{}", parse(input).unwrap()));
+        let exp = parse(input).unwrap();
+        assert!(exp.is_nested());
+        assert_eq!(display, format!("{}", exp));
     }
 
     #[test_case("= true o", ParseError {input: "= true o".into(),location: Location { line: 1, column: 7},err_msg: "expected key word 'or' or 'and'".into()}; "eq true o")]

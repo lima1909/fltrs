@@ -6,6 +6,7 @@ use core::fmt::{Debug, Display};
 // TODO: remove 'pub', temporary for benchmarking
 #[derive(PartialEq, PartialOrd, Debug)]
 pub struct Exp {
+    is_nested: bool,
     index: usize,
     pub(crate) ands: Vec<Ands>,
 }
@@ -32,27 +33,38 @@ impl Display for Exp {
 impl Exp {
     pub(crate) fn new(f: Filter) -> Self {
         let mut ors = Self {
+            is_nested: false,
             index: 0,
             ands: vec![],
         };
+        ors.set_nested(&f);
         ors.ands.push(Ands::new(f));
         ors
     }
 
     pub(crate) fn or(&mut self, f: Filter) {
+        self.set_nested(&f);
         self.ands.push(Ands::new(f));
         self.index += 1;
     }
 
     pub(crate) fn and(&mut self, f: Filter) {
+        self.set_nested(&f);
         let and = self.ands.get_mut(self.index).unwrap();
         and.push(f);
     }
 
-    pub(crate) fn get_ordered_ands(&mut self) -> &[Ands] {
-        self.ands
-            .sort_by(|a1, a2| a1.next.len().partial_cmp(&a2.next.len()).unwrap());
-        &self.ands
+    fn set_nested(&mut self, f: &Filter) {
+        if !self.is_nested {
+            match f {
+                Filter::Nested(_) | Filter::Not(_) => self.is_nested = true,
+                _ => {}
+            }
+        }
+    }
+
+    pub(crate) fn is_nested(&self) -> bool {
+        self.is_nested
     }
 }
 
