@@ -143,6 +143,36 @@ where
     and
 }
 
+fn new_ands_predicate<'a, P: 'a, Arg: 'a>(
+    ands: Ands,
+    ops: &'a Operators,
+) -> And<P, BoxExecutor<'a, Arg>>
+where
+    P: FromPredicate<'a, Arg>,
+{
+    let ands_str = ands.to_string();
+    let mut it = ands.next.into_iter();
+
+    if let Filter::Predicate(l) = ands.filter {
+        if let Filter::Predicate(r) = it.next().unwrap() {
+            let mut and: And<P, BoxExecutor<'a, Arg>> = And(
+                P::from_predicate(l, ops),
+                Box::new(P::from_predicate(r, ops)),
+            );
+
+            for next in it {
+                if let Filter::Predicate(p) = next {
+                    and = And(P::from_predicate(p, ops), Box::new(and));
+                }
+            }
+
+            return and;
+        }
+    }
+    // this should be unreachable code!!!
+    panic!("nested ands are not expected: {}", ands_str)
+}
+
 fn match_filter<'a, P: 'a, Arg: 'a>(f: Filter, ops: &'a Operators) -> BoxExecutor<'a, Arg>
 where
     P: FromPredicate<'a, Arg>,
