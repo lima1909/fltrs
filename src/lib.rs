@@ -19,20 +19,12 @@ pub type Result<T> = core::result::Result<T, FltrError>;
 
 pub trait Filterable: PartialEq<Value> + PartialOrd<Value> + Display {}
 
+impl<V: PartialEq<Value> + PartialOrd<Value> + Display> Filterable for V {}
+
 pub trait PathResolver {
     fn path_to_index(&self, path: &str) -> Option<usize>;
     fn value(&self, idx: usize) -> &dyn Filterable;
 }
-
-impl Filterable for String {}
-impl Filterable for &str {}
-impl Filterable for char {}
-impl Filterable for bool {}
-impl Filterable for u32 {}
-impl Filterable for i32 {}
-impl Filterable for i64 {}
-impl Filterable for f32 {}
-impl Filterable for f64 {}
 
 // TODO: remove this function, temporary for benchmarking
 pub fn parse(input: &str) -> std::result::Result<crate::token::Exp, crate::error::ParseError> {
