@@ -26,6 +26,16 @@ pub trait PathResolver {
     fn value(&self, idx: usize) -> &dyn Filterable;
 }
 
+impl<F: Filterable> PathResolver for F {
+    fn path_to_index(&self, _path: &str) -> Option<usize> {
+        Some(0)
+    }
+
+    fn value(&self, _idx: usize) -> &dyn Filterable {
+        self
+    }
+}
+
 // TODO: remove this function, temporary for benchmarking
 pub fn parse(input: &str) -> std::result::Result<crate::token::Exp, crate::error::ParseError> {
     crate::parser::parse(input)
