@@ -1,5 +1,6 @@
 pub mod error;
 pub mod idea;
+pub mod idea2;
 pub mod operator;
 mod parser;
 pub mod runtime;
