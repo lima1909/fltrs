@@ -70,6 +70,30 @@ fn rt_exp_new(c: &mut Criterion) {
     });
 }
 
+fn rt_idea(c: &mut Criterion) {
+    use fltrs::idea::Exec;
+    use fltrs::operator::Operators;
+    use fltrs::parse;
+
+    let ps = get_points();
+
+    let p = Point {
+        name: "Foo".into(),
+        x: 5,
+    };
+
+    let ops = Operators::default();
+    let exp = parse(r#"x = 42 or name = "Point" "#).unwrap();
+
+    let ex = Exec::prepare(exp, ops, &p);
+
+    c.bench_function("idea", |b| {
+        b.iter(|| {
+            assert_eq!(24, ps.iter().filter(|p| { ex.exec(*p) }).count());
+        })
+    });
+}
+
 fn _std_rust(c: &mut Criterion) {
     let ps = get_points();
     let pp = String::from("Point");
@@ -84,7 +108,7 @@ fn _std_rust(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, rt_exp, rt_exp_new);
+criterion_group!(benches, rt_exp, rt_exp_new, rt_idea);
 criterion_main!(benches);
 
 struct Point {

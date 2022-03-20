@@ -1,143 +1,117 @@
-use crate::value::{Number, Value};
-use std::fmt::Display;
+use crate::operator::{OperatorFn, Operators};
+use crate::token::{Exp, Filter};
+use crate::value::Value;
+use crate::PathResolver;
 
-pub type PredicateFn<V, A> = fn(val: &V, arg: &A) -> bool;
-
-trait Predicate<V, A> {
-    fn exec(&self, pos: usize, f: PredicateFn<V, A>, arg: &A) -> bool;
+pub struct Exec {
+    ors: [PathExecuter; 2],
 }
 
-struct Example {
-    name: String,
-    x: i32,
-}
+impl Exec {
+    pub fn prepare<PR: PathResolver>(exp: Exp, ops: Operators, pr: &PR) -> Self {
+        let len = exp.ands.len();
+        let mut it = exp.ands.into_iter();
 
-impl<A> Predicate<i32, A> for Example
-// where
-// A: PartialEq<i32> + PartialOrd<i32> + Display,
-// A: ToValue,
-{
-    fn exec(&self, _pos: usize, f: PredicateFn<i32, A>, arg: &A) -> bool {
-        f(&self.x, arg)
-    }
-}
+        if len == 1 {
+            let ands = it.next().expect("expect at least one Ands");
+            if ands.is_or() {
+                // only ONE filter
+                // Self {
+                //     ors: vec![PathExecuter::from_filter::<PR>(ands.filter, &ops, &pr)],
+                // }
+                todo!()
+            } else {
+                // only AND filters
+                todo!()
+            }
+        } else {
+            // at least two ANDs
+            let a1 = it.next().unwrap();
+            let a2 = it.next().unwrap();
 
-impl<A> Predicate<String, A> for Example
-// where
-// A: PartialEq<String> + PartialOrd<String> + Display,
-// A: ToValue,
-{
-    fn exec(&self, _pos: usize, f: PredicateFn<String, A>, arg: &A) -> bool {
-        f(&self.name, arg)
-    }
-}
-
-trait ToValue {
-    fn to_value(&self) -> Value;
-}
-
-impl ToValue for String {
-    fn to_value(&self) -> Value {
-        Value::Text(self.clone())
-    }
-}
-
-impl ToValue for i32 {
-    fn to_value(&self) -> Value {
-        Value::Number(Number::I32(*self))
-    }
-}
-
-impl ToValue for usize {
-    fn to_value(&self) -> Value {
-        Value::Number(Number::Usize(*self))
-    }
-}
-
-pub struct Operators<V, A> {
-    op: Vec<(&'static str, PredicateFn<V, A>)>,
-}
-
-impl<V, A> Default for Operators<V, A>
-where
-    V: PartialEq<A> + PartialOrd<A> + Display,
-    A: ToValue + Display,
-{
-    fn default() -> Self {
-        Self {
-            op: vec![
-                ("=", PartialEq::eq as PredicateFn<V, A>),
-                ("!=", PartialEq::ne),
-                ("<=", PartialOrd::le),
-                ("<", PartialOrd::lt),
-                (">=", PartialOrd::ge),
-                (">", PartialOrd::gt),
-                ("starts_with", starts_with),
-                ("len", len),
-                // ("one_of", one_of),
-            ],
+            if a1.is_or() && a2.is_or() {
+                return Self {
+                    ors: [
+                        PathExecuter::from_filter::<PR>(a1.filter, &ops, &pr),
+                        PathExecuter::from_filter::<PR>(a2.filter, &ops, &pr),
+                    ],
+                };
+            }
+            todo!()
         }
     }
-}
 
-impl<V, A> Operators<V, A> {
-    pub fn get(&self, op: &str) -> Option<PredicateFn<V, A>> {
-        for (n, f) in &self.op {
-            if n == &op {
-                return Some(*f);
+    pub fn exec<PR: PathResolver>(&self, pr: &PR) -> bool {
+        for pe in &self.ors {
+            if pe.exec(pr) {
+                return true;
             }
         }
-        None
+        return false;
     }
 }
 
-fn starts_with<V, A>(v: &V, a: &A) -> bool
-where
-    A: Display,
-    V: Display,
-{
-    v.to_string().starts_with(&a.to_string())
+struct PathExecuter {
+    idx: usize,
+    val: Value,
+    f: OperatorFn,
 }
 
-fn len<V, A>(v: &V, a: &A) -> bool
-where
-    V: Display,
-    A: ToValue,
-{
-    let a: Value = a.to_value();
-    match a {
-        Value::Number(Number::Usize(l)) => v.to_string().len() == l,
-        Value::Number(Number::I32(l)) => v.to_string().len() == l as usize,
-        _ => false,
+impl PathExecuter {
+    fn from_filter<PR: PathResolver>(f: Filter, ops: &Operators, pr: &PR) -> Self {
+        if let Filter::Predicate(p) = f {
+            return Self {
+                idx: pr.path_to_index(p.path.as_ref().unwrap()).unwrap(),
+                val: p.value,
+                f: ops.get(&p.op).unwrap(),
+            };
+        }
+        unimplemented!()
+    }
+
+    #[inline(always)]
+    pub fn exec<PR: PathResolver>(&self, pr: &PR) -> bool {
+        (self.f)(pr.value(self.idx), &self.val)
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::{operator::Operators, Filterable};
+
+    struct Example {
+        name: String,
+        x: i32,
+    }
+
+    impl PathResolver for Example {
+        fn path_to_index(&self, path: &str) -> Option<usize> {
+            match path {
+                "name" => Some(0),
+                _ => Some(1),
+            }
+        }
+
+        fn value(&self, idx: usize) -> &dyn Filterable {
+            match idx {
+                1 => &self.x,
+                _ => &self.name,
+            }
+        }
+    }
 
     #[test]
-    fn eq() {
+    fn exec() {
         let e = Example {
             name: String::from("Paul"),
             x: 42,
         };
 
-        let ops = Operators::<String, _>::default();
+        let ops = Operators::default();
+        let exp = crate::parse(r#"name != "Inge" or name = "Paul" "#).unwrap();
 
-        assert!(e.exec(0, ops.get("=").unwrap(), &String::from("Paul")));
-        // assert!(e.exec(0, ops.get("!=").unwrap(), &String::from("Peter")));
-        // assert!(e.exec(0, ops.get("starts_with").unwrap(), &String::from("Pa")));
-        // // assert!(e.exec(0, ops.get("len").unwrap(), &4));
-
-        // assert!(e.exec(0, PartialOrd::<i32>::lt, &50));
-        let ops = Operators::<i32, _>::default();
-        assert!(e.exec(0, ops.get("<").unwrap(), &50));
-
-        // fn always_true<V, A>(_v: &V, _a: &A) -> bool {
-        //     dbg!(true)
-        // }
-
-        // assert!(e.exec(0, always_true, &5));
+        let ex = Exec::prepare(exp, ops, &e);
+        assert!(ex.exec(&e));
     }
 }
