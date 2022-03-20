@@ -9,36 +9,36 @@ pub struct Exec {
 
 impl Exec {
     pub fn prepare<PR: PathResolver>(exp: Exp, ops: Operators, pr: &PR) -> Self {
-        let len = exp.ands.len();
+        // let len = exp.ands.len();
         let mut it = exp.ands.into_iter();
 
-        if len == 1 {
-            let ands = it.next().expect("expect at least one Ands");
-            if ands.is_or() {
-                // only ONE filter
-                // Self {
-                //     ors: vec![PathExecuter::from_filter::<PR>(ands.filter, &ops, &pr)],
-                // }
-                todo!()
-            } else {
-                // only AND filters
-                todo!()
-            }
-        } else {
-            // at least two ANDs
-            let a1 = it.next().unwrap();
-            let a2 = it.next().unwrap();
+        // if len == 1 {
+        //     let ands = it.next().expect("expect at least one Ands");
+        //     if ands.is_or() {
+        //         // only ONE filter
+        //         // Self {
+        //         //     ors: vec![PathExecuter::from_filter::<PR>(ands.filter, &ops, &pr)],
+        //         // }
+        //         todo!()
+        //     } else {
+        //         // only AND filters
+        //         todo!()
+        //     }
+        // } else {
+        // at least two ANDs
+        let a1 = it.next().unwrap();
+        let a2 = it.next().unwrap();
 
-            if a1.is_or() && a2.is_or() {
-                return Self {
-                    ors: [
-                        PathExecuter::from_filter::<PR>(a1.filter, &ops, &pr),
-                        PathExecuter::from_filter::<PR>(a2.filter, &ops, &pr),
-                    ],
-                };
-            }
-            todo!()
+        if a1.is_or() && a2.is_or() {
+            return Self {
+                ors: [
+                    PathExecuter::from_filter::<PR>(a1.filter, &ops, pr),
+                    PathExecuter::from_filter::<PR>(a2.filter, &ops, pr),
+                ],
+            };
         }
+        todo!()
+        // }
     }
 
     pub fn exec<PR: PathResolver>(&self, pr: &PR) -> bool {
@@ -47,7 +47,7 @@ impl Exec {
                 return true;
             }
         }
-        return false;
+        false
     }
 }
 
