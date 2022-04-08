@@ -1,84 +1,109 @@
-use crate::operator::{OperatorFn, Operators};
+use std::ops::Deref;
+
+use crate::operator::Operators;
 use crate::token::{Exp, Filter};
 use crate::value::Value;
 use crate::PathResolver;
 
-pub struct Exec {
-    ors: [PathExecuter; 2],
-}
+pub fn query<PR: PathResolver + 'static>(exp: Exp, _ops: &Operators, pr: &PR) -> Box<dyn Exec<PR>> {
+    if exp.ands.is_empty() {
+        panic!("empty expression is not allowed")
+    }
 
-impl Exec {
-    pub fn prepare<PR: PathResolver>(exp: Exp, ops: Operators, pr: &PR) -> Self {
-        // let len = exp.ands.len();
-        let mut it = exp.ands.into_iter();
+    let mut it = exp.ands.into_iter();
+    let mut query;
 
-        // if len == 1 {
-        //     let ands = it.next().expect("expect at least one Ands");
-        //     if ands.is_or() {
-        //         // only ONE filter
-        //         // Self {
-        //         //     ors: vec![PathExecuter::from_filter::<PR>(ands.filter, &ops, &pr)],
-        //         // }
-        //         todo!()
-        //     } else {
-        //         // only AND filters
-        //         todo!()
-        //     }
-        // } else {
-        // at least two ANDs
-        let a1 = it.next().unwrap();
-        let a2 = it.next().unwrap();
-
-        if a1.is_or() && a2.is_or() {
-            return Self {
-                ors: [
-                    PathExecuter::from_filter::<PR>(a1.filter, &ops, pr),
-                    PathExecuter::from_filter::<PR>(a2.filter, &ops, pr),
-                ],
-            };
-        }
+    let ands = it.next().expect("expect at least one Ands");
+    if ands.is_or() {
+        // only ONE filter
+        query = from_filter(ands.filter, pr)
+    } else {
+        // only AND filters
         todo!()
-        // }
     }
 
-    pub fn exec<PR: PathResolver>(&self, pr: &PR) -> bool {
-        for pe in &self.ors {
-            if pe.exec(pr) {
-                return true;
-            }
+    for ands in it {
+        if ands.is_or() {
+            let ex = from_filter(ands.filter, pr);
+            let f: Box<dyn Fn(&PR) -> bool> = Box::new(move |pr| ex.exec(pr) || query.exec(pr));
+            query = Box::new(f) as Box<dyn Exec<PR>>;
+        } else {
         }
-        false
+    }
+
+    query
+}
+
+fn from_filter<PR: PathResolver + 'static>(filter: Filter, pr: &PR) -> Box<dyn Exec<PR>> {
+    match filter {
+        Filter::Predicate(p) => {
+            let path = p.path.clone().unwrap();
+            let idx = pr.path_to_index(&path).unwrap();
+            let f = new::<PR>(&p.op, idx, p.value);
+            Box::new(f)
+        }
+        Filter::Not(exp) => Box::new(Not(query(exp, &Operators::default(), pr))),
+        Filter::Nested(exp) => Box::new(Query(query(exp, &Operators::default(), pr))),
     }
 }
 
-struct PathExecuter {
-    idx: usize,
-    val: Value,
-    f: OperatorFn,
+pub trait Exec<PR: PathResolver> {
+    fn exec(&self, pr: &PR) -> bool;
 }
 
-impl PathExecuter {
-    fn from_filter<PR: PathResolver>(f: Filter, ops: &Operators, pr: &PR) -> Self {
-        if let Filter::Predicate(p) = f {
-            return Self {
-                idx: pr.path_to_index(p.path.as_ref().unwrap()).unwrap(),
-                val: p.value,
-                f: ops.get(&p.op).unwrap(),
-            };
-        }
-        unimplemented!()
+impl<PR: PathResolver> Exec<PR> for Box<dyn Exec<PR>> {
+    fn exec(&self, pr: &PR) -> bool {
+        self.deref().exec(pr)
     }
+}
 
-    #[inline(always)]
-    pub fn exec<PR: PathResolver>(&self, pr: &PR) -> bool {
-        (self.f)(pr.value(self.idx), &self.val)
+impl<PR: PathResolver> Exec<PR> for Box<dyn Fn(&PR) -> bool> {
+    fn exec(&self, pr: &PR) -> bool {
+        (self)(pr)
+    }
+}
+
+impl<PR: PathResolver> Exec<PR> for dyn Fn(&PR) -> bool {
+    fn exec(&self, pr: &PR) -> bool {
+        (self)(pr)
+    }
+}
+
+impl<PR: PathResolver> Exec<PR> for &dyn Fn(&PR) -> bool {
+    fn exec(&self, pr: &PR) -> bool {
+        (self)(pr)
+    }
+}
+
+struct Not<E>(E);
+
+impl<PR: PathResolver, E: Exec<PR>> Exec<PR> for Not<E> {
+    fn exec(&self, pr: &PR) -> bool {
+        !self.0.exec(pr)
+    }
+}
+
+struct Query<E>(E);
+
+impl<PR: PathResolver, E: Exec<PR>> Exec<PR> for Query<E> {
+    fn exec(&self, pr: &PR) -> bool {
+        self.0.exec(pr)
+    }
+}
+
+fn new<PR: PathResolver + 'static>(op: &str, idx: usize, v: Value) -> Box<dyn Fn(&PR) -> bool> {
+    //Box<dyn Fn(&PR) -> bool> {
+    match op {
+        "=" => Box::new(move |pr| *pr.value(idx) == v),
+        "!=" => Box::new(move |pr| *pr.value(idx) != v),
+        _ => unimplemented!(),
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{operator::Operators, Filterable};
+    use crate::{operator::Operators, parse, Filterable};
 
     struct Example {
         name: String,
@@ -109,9 +134,9 @@ mod test {
         };
 
         let ops = Operators::default();
-        let exp = crate::parse(r#"name != "Inge" or name = "Paul" "#).unwrap();
+        let exp = parse(r#"x = 45 or name = "Paul" "#).unwrap();
 
-        let ex = Exec::prepare(exp, ops, &e);
+        let ex = query(exp, &ops, &e);
         assert!(ex.exec(&e));
     }
 }
