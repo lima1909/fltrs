@@ -3,11 +3,7 @@ use crate::operator::Operators;
 use crate::token::{Exp, Filter};
 use crate::{PathResolver, Predicate, Result};
 
-pub fn query<PR: PathResolver + 'static>(
-    exp: Exp,
-    ops: &Operators<PR>,
-    pr: &PR,
-) -> Result<Predicate<PR>> {
+pub fn query<PR: PathResolver + 'static>(exp: Exp, ops: &Operators<PR>) -> Result<Predicate<PR>> {
     if exp.ands.is_empty() {
         return Err(FltrError("empty expression is not allowed".into()));
     }
@@ -18,24 +14,24 @@ pub fn query<PR: PathResolver + 'static>(
     let ands = it.next().expect("expect at least one Ands");
     if ands.is_or() {
         // only ONE filter
-        query = from_filter(ands.filter, pr, ops)?;
+        query = from_filter(ands.filter, ops)?;
     } else {
         // only AND filters
-        query = from_filter(ands.filter, pr, ops)?;
+        query = from_filter(ands.filter, ops)?;
         for a in ands.next {
-            let ex = from_filter(a, pr, ops)?;
+            let ex = from_filter(a, ops)?;
             query = Box::new(move |pr| (query)(pr) && (ex)(pr));
         }
     }
 
     for ands in it {
         if ands.is_or() {
-            let ex = from_filter(ands.filter, pr, ops)?;
+            let ex = from_filter(ands.filter, ops)?;
             query = Box::new(move |pr| (query)(pr) || (ex)(pr));
         } else {
-            let mut sub_ands = from_filter(ands.filter, pr, ops)?;
+            let mut sub_ands = from_filter(ands.filter, ops)?;
             for a in ands.next {
-                let ex = from_filter(a, pr, ops)?;
+                let ex = from_filter(a, ops)?;
                 sub_ands = Box::new(move |pr| (sub_ands)(pr) && (ex)(pr));
             }
             query = Box::new(move |pr| (query)(pr) || (sub_ands)(pr));
@@ -47,13 +43,12 @@ pub fn query<PR: PathResolver + 'static>(
 
 fn from_filter<PR: PathResolver + 'static>(
     filter: Filter,
-    pr: &PR,
     ops: &Operators<PR>,
 ) -> Result<Predicate<PR>> {
     match filter {
         Filter::Predicate(p) => {
             let path = p.path.unwrap_or_default();
-            let idx = pr.path_to_index(&path).ok_or_else(|| {
+            let idx = PR::path_to_index(&path).ok_or_else(|| {
                 FltrError(format!(
                     "invalid path: '{}' for value: '{}'",
                     path, &p.value
@@ -63,8 +58,8 @@ fn from_filter<PR: PathResolver + 'static>(
                 .get(&p.op, idx, p.value)
                 .ok_or_else(|| FltrError(format!("invalid operation: '{}'", &p.op)))?)
         }
-        Filter::Not(exp) => Ok(Not(query(exp, ops, pr)?).into()),
-        Filter::Nested(exp) => query(exp, ops, pr),
+        Filter::Not(exp) => Ok(Not(query(exp, ops)?).into()),
+        Filter::Nested(exp) => query(exp, ops),
     }
 }
 
@@ -95,7 +90,7 @@ mod test {
     #[test_case("< 7" => false; "lt 7")]
     fn query_i32(input: &str) -> bool {
         let exp = parse(input).unwrap();
-        query(exp, &Operators::default(), &7).unwrap()(&7)
+        query(exp, &Operators::default()).unwrap()(&7)
     }
 
     #[test_case(r#"= "Jasmin""# => true; "eq Jasmin")]
@@ -106,7 +101,7 @@ mod test {
     fn query_string(input: &str) -> bool {
         // assert!('c' > 'C');
         let exp = parse(input).unwrap();
-        query(exp, &Operators::default(), &"").unwrap()(&"Jasmin")
+        query(exp, &Operators::default()).unwrap()(&"Jasmin")
     }
 
     #[test_case(r#"= "Jasmin""# => true; "eq Jasmin")]
@@ -122,7 +117,7 @@ mod test {
     #[test_case(r#"!= "Inge" and (!= "Paul" and != "Peter")"# => true; "nested ne Inge and ne Paul and ne Peter")]
     fn query_nested_not(input: &str) -> bool {
         let exp = parse(input).unwrap();
-        query(exp, &Operators::default(), &"").unwrap()(&"Jasmin")
+        query(exp, &Operators::default()).unwrap()(&"Jasmin")
     }
 
     struct Car<'a> {
@@ -132,7 +127,7 @@ mod test {
     }
 
     impl PathResolver for Car<'_> {
-        fn path_to_index(&self, path: &str) -> Option<usize> {
+        fn path_to_index(path: &str) -> Option<usize> {
             match path {
                 "name" => Some(0),
                 "ps" => Some(1),
@@ -164,7 +159,7 @@ mod test {
             size: 54,
         };
         let exp = parse(input).unwrap();
-        query(exp, &Operators::default(), &car).unwrap()(&car)
+        query(exp, &Operators::default()).unwrap()(&car)
     }
 
     #[test_case(r#"name = "BMW" and ps > 100"# => true; "name eq BMW and ps gt 100")]
@@ -176,7 +171,7 @@ mod test {
             size: 54,
         };
         let exp = parse(input).unwrap();
-        query(exp, &Operators::default(), &car).unwrap()(&car)
+        query(exp, &Operators::default()).unwrap()(&car)
     }
 
     #[test_case(r#"name = "BMW" or ps > 100"# => true; "name eq BMW or ps gt 100")]
@@ -190,7 +185,7 @@ mod test {
             size: 54,
         };
         let exp = parse(input).unwrap();
-        query(exp, &Operators::default(), &car).unwrap()(&car)
+        query(exp, &Operators::default()).unwrap()(&car)
     }
 
     #[test_case(r#"name = "BMW" and ps != 100 or size = 54"# => true; "and or")]
@@ -203,7 +198,7 @@ mod test {
             size: 54,
         };
         let exp = parse(input).unwrap();
-        query(exp, &Operators::default(), &car).unwrap()(&car)
+        query(exp, &Operators::default()).unwrap()(&car)
     }
 
     #[test_case(r#"name = "BMW" "# => true; "name eq BMW")]
@@ -226,18 +221,13 @@ mod test {
             size: 54,
         };
         let exp = parse(input).unwrap();
-        query(exp, &Operators::default(), &car).unwrap()(&car)
+        query(exp, &Operators::default()).unwrap()(&car)
     }
 
     #[test_case(r#"= "bmw""#, FltrError("invalid path: '' for value: 'bmw'".into()); "empty path")]
     #[test_case(r#"foo = "bmw""#, FltrError("invalid path: 'foo' for value: 'bmw'".into()); "invalid path")]
     fn query_err(input: &str, err: FltrError) {
-        let car = Car {
-            name: "BMW",
-            ps: 142,
-            size: 54,
-        };
         let exp = parse(input).unwrap();
-        assert_eq!(err, query(exp, &Operators::default(), &car).err().unwrap());
+        assert_eq!(err, query::<Car>(exp, &Operators::default()).err().unwrap());
     }
 }
