@@ -22,12 +22,12 @@ pub trait Filterable: PartialEq<Value> + PartialOrd<Value> + Display {}
 impl<V: PartialEq<Value> + PartialOrd<Value> + Display> Filterable for V {}
 
 pub trait PathResolver {
-    fn path_to_index(&self, path: &str) -> Option<usize>;
+    fn path_to_index(path: &str) -> Option<usize>;
     fn value(&self, idx: usize) -> &dyn Filterable;
 }
 
 impl<F: Filterable> PathResolver for F {
-    fn path_to_index(&self, _path: &str) -> Option<usize> {
+    fn path_to_index(_path: &str) -> Option<usize> {
         Some(0)
     }
 

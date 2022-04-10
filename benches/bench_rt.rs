@@ -8,15 +8,8 @@ fn query(c: &mut Criterion) {
 
     let ps = get_points();
 
-    let p = Point {
-        name: "Foo".into(),
-        x: 5,
-    };
-
-    let ops = Operators::default();
     let exp = parse(r#"x = 42 or name = "Point""#).unwrap();
-
-    let exp = query(exp, &ops, &p).unwrap();
+    let exp = query::<Point>(exp, &Operators::default()).unwrap();
 
     c.bench_function("query", |b| {
         b.iter(|| {
@@ -48,7 +41,7 @@ struct Point {
 }
 
 impl PathResolver for Point {
-    fn path_to_index(&self, path: &str) -> Option<usize> {
+    fn path_to_index(path: &str) -> Option<usize> {
         match path {
             "name" => Some(0),
             "x" => Some(1),
