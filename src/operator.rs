@@ -104,6 +104,7 @@ mod test {
     #[test]
     fn starts_with_valid_op() {
         let op = Operators::<bool>::default();
+        assert_eq!(Some("=="), op.starts_with_valid_op("=="));
         assert_eq!(Some("="), op.starts_with_valid_op("="));
         assert_eq!(Some("="), op.starts_with_valid_op("=7"));
         assert_eq!(None, op.starts_with_valid_op("foo"));
@@ -157,6 +158,7 @@ mod test {
         assert!((one_of)(&"Paul"));
     }
 
+    #[test_case("==",  'f', Value::Char('f')  ; "eqeq 'f'")]
     #[test_case("=",  'f', Value::Char('f')  ; "eq 'f'")]
     #[test_case("!=",  'g', Value::Char('f')  ; "ne 'g'")]
     #[test_case(">",  'g', Value::Char('f')  ; "gt 'g'")]
