@@ -14,7 +14,7 @@ pub type TextParserFn = fn(text: &str) -> Value;
 
 pub(crate) struct Parser<'a> {
     s: Scanner<'a>,
-    ops: Operators,
+    ops: Operators<bool>,
     exp: Option<Exp>,
     text_parser_fns: Vec<(&'static str, TextParserFn)>,
 }
@@ -54,7 +54,7 @@ impl<'a> DerefMut for Parser<'a> {
 // Parser implementations
 ///////////////////////////////////////////////////////////////////////////////
 
-pub(crate) fn parse(input: &str) -> Result<Exp> {
+pub fn parse(input: &str) -> Result<Exp> {
     let mut parser = Parser::new(input);
     let f = iws(&mut parser, filter())?;
     parser.exp = Some(Exp::new(f));

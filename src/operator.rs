@@ -1,17 +1,18 @@
 use crate::value::{Number, Value};
-use crate::Filterable;
+use crate::{PathResolver, Predicate};
 
-pub type OperatorFn = fn(arg: &dyn Filterable, v: &Value) -> bool;
+pub type OperatorFn<PR> = fn(idx: usize, v: Value) -> Predicate<PR>;
 
-pub struct Operators {
-    op: Vec<(&'static str, OperatorFn)>,
+pub struct Operators<PR> {
+    op: Vec<(&'static str, OperatorFn<PR>)>,
 }
 
-impl Default for Operators {
+impl<PR: PathResolver> Default for Operators<PR> {
     fn default() -> Self {
         Self {
             op: vec![
-                ("=", eq as OperatorFn),
+                ("==", eq as OperatorFn<PR>),
+                ("=", eq),
                 ("!=", ne),
                 ("<=", le),
                 ("<", lt),
@@ -25,11 +26,11 @@ impl Default for Operators {
     }
 }
 
-impl Operators {
-    pub fn get(&self, op: &str) -> Option<OperatorFn> {
+impl<PR> Operators<PR> {
+    pub fn get(&self, op: &str, idx: usize, v: Value) -> Option<Predicate<PR>> {
         for (n, f) in &self.op {
             if n == &op {
-                return Some(*f);
+                return Some(f(idx, v));
             }
         }
         None
@@ -45,56 +46,54 @@ impl Operators {
     }
 }
 
-#[inline(always)]
-fn eq(arg: &dyn Filterable, v: &Value) -> bool {
-    arg.eq(v)
+fn eq<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
+    Box::new(move |pr| pr.value(idx) == &v)
 }
 
-#[inline(always)]
-fn ne(arg: &dyn Filterable, v: &Value) -> bool {
-    arg.ne(v)
+fn ne<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
+    Box::new(move |pr| pr.value(idx) != &v)
 }
 
-#[inline(always)]
-fn ge(arg: &dyn Filterable, v: &Value) -> bool {
-    arg.ge(v)
+fn le<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
+    Box::new(move |pr| pr.value(idx).le(&v))
 }
 
-#[inline(always)]
-fn gt(arg: &dyn Filterable, v: &Value) -> bool {
-    arg.gt(v)
+fn lt<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
+    Box::new(move |pr| pr.value(idx).lt(&v))
 }
 
-#[inline(always)]
-fn le(arg: &dyn Filterable, v: &Value) -> bool {
-    arg.le(v)
+fn ge<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
+    Box::new(move |pr| pr.value(idx).ge(&v))
 }
 
-#[inline(always)]
-fn lt(arg: &dyn Filterable, v: &Value) -> bool {
-    arg.lt(v)
+fn gt<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
+    Box::new(move |pr| pr.value(idx).gt(&v))
 }
 
-fn len(arg: &dyn Filterable, v: &Value) -> bool {
-    match v {
-        Value::Number(Number::Usize(l)) => arg.to_string().len() == *l,
-        Value::Number(Number::I32(l)) => arg.to_string().len() == *l as usize,
+fn len<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
+    Box::new(move |pr| match v {
+        Value::Number(Number::Usize(l)) => pr.value(idx).to_string().len() == l,
+        Value::Number(Number::I32(l)) => pr.value(idx).to_string().len() == l as usize,
         _ => false,
-    }
+    })
 }
 
-fn starts_with(arg: &dyn Filterable, v: &Value) -> bool {
-    if let Value::Text(s) = v {
-        return arg.to_string().starts_with(s);
-    }
-    false
+fn starts_with<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
+    Box::new(move |pr| {
+        if let Value::Text(s) = &v {
+            return pr.value(idx).to_string().starts_with(s);
+        }
+        false
+    })
 }
 
-fn one_of(arg: &dyn Filterable, v: &Value) -> bool {
-    if let Value::List(vs) = v {
-        return vs.iter().filter(|v| arg.eq(*v)).count() > 0;
-    }
-    arg.eq(v)
+fn one_of<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
+    Box::new(move |pr| {
+        if let Value::List(vs) = &v {
+            return vs.iter().filter(|v| pr.value(idx).eq(*v)).count() > 0;
+        }
+        pr.value(idx).eq(&v)
+    })
 }
 
 #[cfg(test)]
@@ -104,7 +103,7 @@ mod test {
 
     #[test]
     fn starts_with_valid_op() {
-        let op = Operators::default();
+        let op = Operators::<bool>::default();
         assert_eq!(Some("="), op.starts_with_valid_op("="));
         assert_eq!(Some("="), op.starts_with_valid_op("=7"));
         assert_eq!(None, op.starts_with_valid_op("foo"));
@@ -112,52 +111,50 @@ mod test {
 
     #[test]
     fn get() {
-        let op = Operators::default();
-        assert!(op.get("=").is_some());
-        assert!(op.get("foo").is_none());
+        let op = Operators::<bool>::default();
+        assert!(op.get("=", 0, Value::Bool(true)).is_some());
+        assert!(op.get("foo", 0, Value::Bool(true)).is_none());
     }
 
     #[test]
     fn exec_bool() {
         let op = Operators::default();
-        let ne = op.get("!=").unwrap();
-        assert!((ne)(&true, &Value::Bool(false)));
+        let ne = op.get("!=", 0, Value::Bool(false)).unwrap();
+        assert!((ne)(&true));
     }
 
     #[test]
     fn exec_len_string() {
         let op = Operators::default();
-        let len = op.get("len").unwrap();
-        assert!((len)(
-            &String::from("Paul"),
-            &Value::Number(Number::Usize(4))
-        ));
+        let len = op.get("len", 0, Value::Number(Number::Usize(4))).unwrap();
+        assert!((len)(&String::from("Paul")));
     }
 
     #[test]
     fn exec_len_str() {
         let op = Operators::default();
-        let len = op.get("len").unwrap();
-        assert!((len)(&"Paul", &Value::Number(Number::Usize(4))));
+        let len = op.get("len", 0, Value::Number(Number::Usize(4))).unwrap();
+        assert!((len)(&"Paul"));
     }
 
     #[test]
     fn exec_starts_with_str() {
         let op = Operators::default();
-        let starts_with = op.get("starts_with").unwrap();
-        assert!((starts_with)(&"Paul", &Value::Text("Pa".into())));
+        let starts_with = op.get("starts_with", 0, Value::Text("Pa".into())).unwrap();
+        assert!((starts_with)(&"Paul"));
     }
 
     #[test]
     fn exec_one_of_str() {
         let op = Operators::default();
-        let one_of = op.get("one_of").unwrap();
-        assert!((one_of)(
-            &"Paul",
-            &Value::List(vec![Value::Text("Inge".into()), Value::Text("Paul".into())])
-        ));
-
-        assert!((one_of)(&"Paul", &Value::Text("Paul".into())));
+        let one_of = op
+            .get(
+                "one_of",
+                0,
+                Value::List(vec![Value::Text("Inge".into()), Value::Text("Paul".into())]),
+            )
+            .unwrap();
+        assert!((one_of)(&"Paul"));
     }
 
     #[test_case("=",  'f', Value::Char('f')  ; "eq 'f'")]
@@ -166,8 +163,8 @@ mod test {
     #[test_case("<",  'a', Value::Char('f')  ; "lt 'a'")]
     fn ops_char(op: &str, arg: char, val: Value) {
         let ops = Operators::default();
-        let exec = ops.get(op).unwrap();
-        assert!((exec)(&arg, &val));
+        let exec = ops.get(op, 0, val).unwrap();
+        assert!((exec)(&arg));
     }
 
     #[test_case("=",  4.2, Value::Number(Number::F32(4.2))  ; "eq 4.2")]
@@ -176,7 +173,7 @@ mod test {
     #[test_case("<",  4.2, Value::Number(Number::F32(5.3))  ; "lt 4.2")]
     fn ops_f32(op: &str, arg: f32, val: Value) {
         let ops = Operators::default();
-        let exec = ops.get(op).unwrap();
-        assert!((exec)(&arg, &val));
+        let exec = ops.get(op, 0, val).unwrap();
+        assert!((exec)(&arg));
     }
 }
