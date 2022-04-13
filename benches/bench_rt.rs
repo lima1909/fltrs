@@ -9,11 +9,12 @@ fn query(c: &mut Criterion) {
     let ps = get_points();
 
     let exp = parse(r#"x = 42 or name = "Point""#).unwrap();
-    let exp = query::<Point>(exp, &Operators::default()).unwrap();
+    let query = query::<Point>(exp, &Operators::default()).unwrap();
+    let exec = query.predicate();
 
     c.bench_function("query", |b| {
         b.iter(|| {
-            assert_eq!(24, ps.iter().filter(|p| { (exp)(p) }).count());
+            assert_eq!(24, ps.iter().filter(|p| { (exec)(p) }).count());
         })
     });
 }
