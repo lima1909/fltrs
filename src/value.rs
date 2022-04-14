@@ -69,8 +69,9 @@ macro_rules! partial_eq_cmp {
 }
 
 partial_eq_cmp! { Value::Bool => bool }
+partial_eq_cmp! { Value::Char => char }
+partial_eq_cmp! { Value::Text => String &str}
 partial_eq_cmp! { Value::Int as i32 => usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 }
-partial_eq_cmp! { Value::Char as char => char }
 
 impl PartialEq<Value> for f64 {
     #[inline]
@@ -107,46 +108,6 @@ impl PartialOrd<Value> for f32 {
     fn partial_cmp(&self, other: &Value) -> Option<::core::cmp::Ordering> {
         if let Value::Float(f) = other {
             return self.partial_cmp(&(*f as f32));
-        }
-        None
-    }
-}
-
-impl PartialEq<Value> for String {
-    #[inline]
-    fn eq(&self, other: &Value) -> bool {
-        if let Value::Text(s) = other {
-            return self.eq(s);
-        }
-        false
-    }
-}
-
-impl PartialOrd<Value> for String {
-    #[inline]
-    fn partial_cmp(&self, other: &Value) -> Option<::core::cmp::Ordering> {
-        if let Value::Text(s) = other {
-            return self.partial_cmp(s);
-        }
-        None
-    }
-}
-
-impl ::core::cmp::PartialEq<Value> for &str {
-    #[inline]
-    fn eq(&self, other: &Value) -> bool {
-        if let Value::Text(s) = other {
-            return self.eq(s);
-        }
-        false
-    }
-}
-
-impl ::core::cmp::PartialOrd<Value> for &str {
-    #[inline]
-    fn partial_cmp(&self, other: &Value) -> Option<::core::cmp::Ordering> {
-        if let Value::Text(s) = other {
-            return self.partial_cmp(&s.as_str());
         }
         None
     }
