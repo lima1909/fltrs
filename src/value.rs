@@ -1,204 +1,154 @@
 use core::fmt::{Debug, Display};
 use core::str::FromStr;
 
-#[derive(PartialEq, PartialOrd, Debug, Clone)]
+#[derive(PartialEq, PartialOrd, Debug)]
 pub enum Value {
-    List(Vec<Value>),
-    Text(String),
-    Char(char),
     Bool(bool),
-    Number(Number),
+    Int(i32),
+    Float(f64),
+    Char(char),
+    Text(String),
+    List(Vec<Value>),
 }
 
 impl Display for Value {
     fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::List(vs) => write!(fm, "{:?}", vs),
-            Value::Text(s) => write!(fm, "{}", s),
-            Value::Char(c) => write!(fm, "{}", c),
-            Value::Bool(b) => write!(fm, "{}", b),
-            Value::Number(n) => write!(fm, "{}", n),
+            Value::Bool(v) => write!(fm, "{}", v),
+            Value::Int(v) => write!(fm, "{}", v),
+            Value::Float(v) => write!(fm, "{}", v),
+            Value::Char(v) => write!(fm, "{}", v),
+            Value::Text(v) => write!(fm, "{}", v),
+            Value::List(v) => write!(fm, "{:?}", v),
         }
     }
 }
 
-#[derive(PartialEq, PartialOrd, Debug, Clone, Copy)]
-pub enum Number {
-    F32(f32),
-    F64(f64),
-    I8(i8),
-    I16(i16),
-    I32(i32),
-    I64(i64),
-    I128(i128),
-    U8(u8),
-    U16(u16),
-    U32(u32),
-    U64(u64),
-    U128(u128),
-    Usize(usize),
-}
-
-impl Display for Number {
-    fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use self::Number::*;
-
-        match self {
-            F32(v) => write!(fm, "{}", v),
-            F64(v) => write!(fm, "{}", v),
-            I8(v) => write!(fm, "{}", v),
-            I16(v) => write!(fm, "{}", v),
-            I32(v) => write!(fm, "{}", v),
-            I64(v) => write!(fm, "{}", v),
-            I128(v) => write!(fm, "{}", v),
-            U8(v) => write!(fm, "{}", v),
-            U16(v) => write!(fm, "{}", v),
-            U32(v) => write!(fm, "{}", v),
-            U64(v) => write!(fm, "{}", v),
-            U128(v) => write!(fm, "{}", v),
-            Usize(v) => write!(fm, "{}", v),
-        }
-    }
-}
-
-impl Number {
-    #[inline]
-    pub(crate) fn default(val: &str) -> core::result::Result<Self, String> {
-        if val.contains('.') {
-            Number::try_from_as("f64", val)
-        } else {
-            Number::try_from_as("i32", val)
-        }
-    }
-
-    #[inline]
-    pub fn try_from_as(as_type: &str, val: &str) -> core::result::Result<Self, String> {
-        match as_type {
-            "f32" => Ok(Number::F32(
-                f32::from_str(val).map_err(|err| err.to_string())?,
-            )),
-            "f64" => Ok(Number::F64(
-                f64::from_str(val).map_err(|err| err.to_string())?,
-            )),
-            "i8" => Ok(Number::I8(
-                i8::from_str(val).map_err(|err| err.to_string())?,
-            )),
-            "i16" => Ok(Number::I16(
-                i16::from_str(val).map_err(|err| err.to_string())?,
-            )),
-            "i32" => Ok(Number::I32(
-                i32::from_str(val).map_err(|err| err.to_string())?,
-            )),
-            "i64" => Ok(Number::I64(
-                i64::from_str(val).map_err(|err| err.to_string())?,
-            )),
-            "i128" => Ok(Number::I128(
-                i128::from_str(val).map_err(|err| err.to_string())?,
-            )),
-            "u8" => Ok(Number::U8(
-                u8::from_str(val).map_err(|err| err.to_string())?,
-            )),
-            "u16" => Ok(Number::U16(
-                u16::from_str(val).map_err(|err| err.to_string())?,
-            )),
-            "u32" => Ok(Number::U32(
-                u32::from_str(val).map_err(|err| err.to_string())?,
-            )),
-            "u64" => Ok(Number::U64(
-                u64::from_str(val).map_err(|err| err.to_string())?,
-            )),
-            "u128" => Ok(Number::U128(
-                u128::from_str(val).map_err(|err| err.to_string())?,
-            )),
-            "usize" => Ok(Number::Usize(
-                usize::from_str(val).map_err(|err| err.to_string())?,
-            )),
-
-            _ => Err(String::from("is not an valid 'as type' for a number")),
-        }
+#[inline]
+pub(crate) fn str_to_number(s: &str) -> core::result::Result<Value, String> {
+    if s.contains('.') {
+        Ok(Value::Float(
+            f64::from_str(s).map_err(|err| err.to_string())?,
+        ))
+    } else {
+        Ok(Value::Int(i32::from_str(s).map_err(|err| err.to_string())?))
     }
 }
 
 #[macro_export]
 macro_rules! partial_eq_cmp {
-    (  $($lt:ty : $p:path => $rt:ty) + ) => {
-        $( partial_eq_cmp!( main $lt : $p => $rt); ) +
-    };
+        ( $val:path => $($t:ty) + ) => {
+            $( partial_eq_cmp!( main $val => $t); )+
+        };
 
-    (  main $lt:ty : $p:path => $rt:ty ) => {
-        impl ::core::cmp::PartialEq<$lt> for $rt {
-            #[inline]
-            fn eq(&self, other: &$lt) -> bool {
-                match other {
-                    $p(v) => self.eq(v),
-                    _ => false,
+        ( $val:path as $as:ty => $($t:ty) + ) => {
+            $( partial_eq_cmp!( main $val as $as => $t); )+
+        };
+
+        ( main $val:path $(as $as:ty)? => $t:ty ) => {
+            impl ::core::cmp::PartialEq<Value> for $t {
+                #[inline]
+                fn eq(&self, other: &crate::value::Value) -> bool {
+                    if let $val(v) = other {
+                        return  (*self $(as  $as)?).eq(v);
+                    }
+                    false
                 }
             }
-        }
 
-        impl ::core::cmp::PartialOrd<$lt> for $rt {
-            #[inline]
-            fn partial_cmp(&self, other: &$lt) -> Option<::core::cmp::Ordering> {
-                match other {
-                    $p(v) => self.partial_cmp(v),
-                    _ => None,
+            impl ::core::cmp::PartialOrd<Value> for $t {
+                #[inline]
+                fn partial_cmp(&self, other: &crate::value::Value) -> Option<::core::cmp::Ordering> {
+                    if let $val(v) = other {
+                        return (*self $(as  $as)?).partial_cmp(v);
+                    }
+                    None
                 }
             }
-        }
-    };
+       }
 }
 
-partial_eq_cmp! {
-    Value : Value::Text => String
-    Value : Value::Char => char
-    Value : Value::Bool => bool
-    Value : Value::Number => usize
-    Value : Value::Number => u8
-    Value : Value::Number => u16
-    Value : Value::Number => u32
-    Value : Value::Number => u64
-    Value : Value::Number => u128
-    Value : Value::Number => i8
-    Value : Value::Number => i16
-    Value : Value::Number => i32
-    Value : Value::Number => i64
-    Value : Value::Number => i128
-    Value : Value::Number => f32
-    Value : Value::Number => f64
+partial_eq_cmp! { Value::Bool => bool }
+partial_eq_cmp! { Value::Int as i32 => usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 }
+partial_eq_cmp! { Value::Char as char => char }
 
+impl PartialEq<Value> for f64 {
+    #[inline]
+    fn eq(&self, other: &Value) -> bool {
+        if let Value::Float(f) = other {
+            return (self - f).abs() < f64::EPSILON;
+        }
+        false
+    }
+}
 
-    Number : Number::Usize => usize
-    Number : Number::U8 => u8
-    Number : Number::U16 => u16
-    Number : Number::U32 => u32
-    Number : Number::U64 => u64
-    Number : Number::U128 => u128
-    Number : Number::I8 => i8
-    Number : Number::I16 => i16
-    Number : Number::I32 => i32
-    Number : Number::I64 => i64
-    Number : Number::I128 => i128
-    Number : Number::F32 => f32
-    Number : Number::F64 => f64
+impl PartialOrd<Value> for f64 {
+    #[inline]
+    fn partial_cmp(&self, other: &Value) -> Option<::core::cmp::Ordering> {
+        if let Value::Float(f) = other {
+            return self.partial_cmp(f);
+        }
+        None
+    }
+}
+
+impl PartialEq<Value> for f32 {
+    #[inline]
+    fn eq(&self, other: &Value) -> bool {
+        if let Value::Float(f) = other {
+            return (self - (*f as f32)).abs() < f32::EPSILON;
+        }
+        false
+    }
+}
+
+impl PartialOrd<Value> for f32 {
+    #[inline]
+    fn partial_cmp(&self, other: &Value) -> Option<::core::cmp::Ordering> {
+        if let Value::Float(f) = other {
+            return self.partial_cmp(&(*f as f32));
+        }
+        None
+    }
+}
+
+impl PartialEq<Value> for String {
+    #[inline]
+    fn eq(&self, other: &Value) -> bool {
+        if let Value::Text(s) = other {
+            return self.eq(s);
+        }
+        false
+    }
+}
+
+impl PartialOrd<Value> for String {
+    #[inline]
+    fn partial_cmp(&self, other: &Value) -> Option<::core::cmp::Ordering> {
+        if let Value::Text(s) = other {
+            return self.partial_cmp(s);
+        }
+        None
+    }
 }
 
 impl ::core::cmp::PartialEq<Value> for &str {
     #[inline]
     fn eq(&self, other: &Value) -> bool {
-        match other {
-            Value::Text(v) => self.eq(v),
-            _ => false,
+        if let Value::Text(s) = other {
+            return self.eq(s);
         }
+        false
     }
 }
 
 impl ::core::cmp::PartialOrd<Value> for &str {
     #[inline]
     fn partial_cmp(&self, other: &Value) -> Option<::core::cmp::Ordering> {
-        match other {
-            Value::Text(v) => self.to_string().partial_cmp(v),
-            _ => None,
+        if let Value::Text(s) = other {
+            return self.partial_cmp(&s.as_str());
         }
+        None
     }
 }
 
@@ -208,38 +158,40 @@ mod test {
 
     #[test]
     fn cmp_number_integer() {
-        assert!(10 == Number::I32(10));
-        assert!(10 > Number::I32(9));
-        assert!(10 < Number::I32(11));
+        assert!(10 == Value::Int(10));
+        assert!(10 > Value::Int(9));
+        assert!(10 < Value::Int(11));
 
-        assert_eq!(10.to_string(), Number::I32(10).to_string());
+        assert_eq!(10.to_string(), Value::Int(10).to_string());
 
-        assert!(10u128 == Number::U128(10));
-        assert!(10 as u8 > Number::U8(9));
-        assert!(10u16 < Number::U16(11));
+        assert!(10u128 == Value::Int(10));
+        assert!(10 as u8 > Value::Int(9));
+        assert!(10u16 < Value::Int(11));
 
-        assert!(10usize == Value::Number(Number::Usize(10)));
-        assert!(10 as u32 > Value::Number(Number::U32(9)));
-        assert!(10u64 < Value::Number(Number::U64(11)));
+        assert!(10usize == Value::Int(10));
+        assert!(10 as u32 > Value::Int(9));
+        assert!(10u64 < Value::Int(11));
+        assert!(10i8 < Value::Int(12));
     }
 
     #[test]
     fn cmp_number_float() {
-        assert!(10.2 as f32 == Number::F32(10.2));
-        assert!(10.2 as f32 > Number::F32(9.3));
-        assert!((10.2 as f32) < Number::F32(11.3));
+        assert!(10.2 as f32 == Value::Float(10.2));
+        assert!(10.2 as f64 == Value::Float(10.2));
+        assert!(10.2 as f32 > Value::Float(9.3));
+        assert!((10.2 as f32) < Value::Float(11.3));
 
-        assert_eq!(10.2f32.to_string(), Number::F32(10.2).to_string());
+        assert_eq!(10.2f32.to_string(), Value::Float(10.2).to_string());
 
-        assert!(10.2 == Number::F64(10.2));
-        assert!(10.2 > Number::F64(9.3));
-        assert!(10.2 < Number::F64(11.3));
+        assert!(10.2 == Value::Float(10.2));
+        assert!(10.2 > Value::Float(9.3));
+        assert!(10.2 < Value::Float(11.3));
 
-        assert_eq!(10.2.to_string(), Number::F64(10.2).to_string());
+        assert_eq!(10.2.to_string(), Value::Float(10.2).to_string());
 
-        assert!(10.2 == Value::Number(Number::F64(10.2)));
-        assert!(10.2 > Value::Number(Number::F64(9.3)));
-        assert!(10.2 < Value::Number(Number::F64(11.3)));
+        assert!(10.2 == Value::Float(10.2));
+        assert!(10.2 > Value::Float(9.3));
+        assert!(10.2 < Value::Float(11.3));
     }
 
     #[test]
@@ -273,24 +225,14 @@ mod test {
     }
 
     #[test]
-    fn number_default() {
-        assert_eq!(0, Number::default("0").unwrap());
-        assert_eq!(0.1, Number::default("0.1").unwrap());
+    fn conv_str_to_number() {
+        assert_eq!(0, str_to_number("0").unwrap());
+        assert_eq!(0.1, str_to_number("0.1").unwrap());
     }
 
     #[test]
-    fn number_try_from_as() {
-        for as_type in [
-            "f32", "f64", "i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128",
-            "usize",
-        ] {
-            Number::try_from_as(as_type, "0").unwrap();
-        }
-    }
-
-    #[test]
-    fn number_try_from_as_err() {
-        Number::try_from_as("foo", "0").err().unwrap();
-        Number::try_from_as("i32", "a").err().unwrap();
+    fn conv_str_to_number_err() {
+        str_to_number("foo").err().unwrap();
+        str_to_number("i32").err().unwrap();
     }
 }

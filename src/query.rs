@@ -110,7 +110,6 @@ mod test {
     #[test_case("== 7" => true; "eq eq 7")]
     #[test_case("> 6" => true; "gt 6")]
     #[test_case("< 8" => true; "lt 8")]
-    #[test_case("len 1 as usize" => true; "len 1 usize")]
     #[test_case("len 1" => true; "len 1")]
     #[test_case(r#"starts_with "7""# => true; "starts_with 7")]
     #[test_case("self != 8" => true; "self ne 8")]

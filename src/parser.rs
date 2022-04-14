@@ -1,9 +1,7 @@
-#![allow(dead_code)] // TODO: remove this
-
 use crate::operator::Operators;
 use crate::scanner::{Result, Scanner};
 use crate::token::{Exp, Filter, Predicate};
-use crate::value::{Number, Value, Value::*};
+use crate::value::{str_to_number, Value, Value::*};
 
 use std::{
     ops::{Deref, DerefMut},
@@ -186,7 +184,7 @@ pub(crate) fn value() -> impl FnMut(&mut Parser) -> Result<Value> {
             '\'' => char()(parser),
             't' => Ok(Bool(map("true")(parser)?)),
             'f' => Ok(Bool(map("false")(parser)?)),
-            '-' | '0'..='9' => Ok(Number(number()(parser)?)),
+            '-' | '0'..='9' => Ok(number()(parser)?),
             _ => Err(parser.parse_err(&format!("unexpected char '{}' for a valid Value", c))),
         },
         None => Err(parser.parse_err("unexpected end")),
@@ -224,16 +222,10 @@ pub(crate) fn char() -> impl FnMut(&mut Parser) -> Result<Value> {
 }
 
 #[inline]
-pub(crate) fn number() -> impl FnMut(&mut Parser) -> Result<Number> {
+pub(crate) fn number() -> impl FnMut(&mut Parser) -> Result<Value> {
     |parser: &mut Parser| {
         let n_str = parser.take_while(is_number)?;
-        let as_type = iws(parser, with_as())?;
-        if as_type.is_empty() {
-            return Number::default(&n_str).map_err(|err_str| parser.parse_err(&err_str));
-        }
-
-        Number::try_from_as(&as_type, &n_str)
-            .map_err(|err_str| parser.parse_err(&format!("'{as_type}' {err_str}")))
+        str_to_number(&n_str).map_err(|err_str| parser.parse_err(&err_str))
     }
 }
 
@@ -378,37 +370,35 @@ mod test {
         assert_eq!(expect, with_as()(&mut p).unwrap());
     }
 
-    #[test_case("0", Number::I32(0) ; "0")]
-    #[test_case("01", Number::I32(1) ; "01")]
-    #[test_case("002", Number::I32(2) ; "002")]
-    #[test_case("0.1", Number::F64(0.1) ; "0.1")]
-    #[test_case("1.34", Number::F64(1.34) ; "1.34")]
-    #[test_case("-1.34", Number::F64(-1.34) ; "minus 1.34")]
-    #[test_case("240", Number::I32(240) ; "240")]
-    #[test_case("-240", Number::I32(-240); "minus 240")]
-    #[test_case("-1.34 as f32", Number::F32(-1.34) ; "minus 1.34 as f32")]
-    #[test_case("240 as u8", Number::U8(240) ; "240 as u8")]
-    fn number_check(input: &str, expect: Number) {
+    #[test_case("0" => Int(0) ; "0")]
+    #[test_case("01" => Int(1) ; "01")]
+    #[test_case("002" => Int(2) ; "002")]
+    #[test_case("0.1" => Float(0.1) ; "0.1")]
+    #[test_case("1.34" => Float(1.34) ; "1.34")]
+    #[test_case("-1.34" => Float(-1.34) ; "minus 1.34")]
+    #[test_case("240" => Int(240) ; "240")]
+    #[test_case("-240" => Int(-240); "minus 240")]
+    #[test_case("-1.34 as f32" => Float(-1.34) ; "minus 1.34 as f32")]
+    #[test_case("240 as u8" => Int(240) ; "240 as u8")]
+    fn number_check(input: &str) -> Value {
         let mut p = Parser::new(input);
-        assert_eq!(expect, number()(&mut p).unwrap());
+        number()(&mut p).unwrap()
     }
 
     #[test_case("a1.34", ParseError {input: "a1.34".into(),location: Location { line: 1, column: 1 },err_msg: "expected numeric character or a minus".into()} ; "a1.34")]
     #[test_case("1a34", ParseError {input: "1a34".into(),location: Location { line: 1, column: 2 },err_msg: "expected numeric character or a dot".into()} ; "1a34")]
-    #[test_case("1.34 as foo", ParseError {input: "1.34 as foo".into(),location: Location { line: 1, column: 11 },err_msg: "'foo' is not an valid 'as type' for a number".into()} ; "1.34 as foo")]
-    #[test_case("240 as i8", ParseError {input: "240 as i8".into(),location: Location { line: 1, column: 9},err_msg: "'i8' number too large to fit in target type".into()} ; "240 as i8")]
+    #[test_case("2400000000", ParseError {input: "2400000000".into(),location: Location { line: 1, column: 10},err_msg: "number too large to fit in target type".into()} ; "240 as i8")]
     fn number_err(input: &str, err: ParseError) {
         let mut p = Parser::new(input);
         assert_eq!(err, number()(&mut p).err().unwrap());
     }
 
     #[test_case(r#""yeh""#, Value::Text("yeh".into()) ; "simple text")]
-    #[test_case(r#""123" as u32"#, Number(Number::U32(123)) ; "text as u32")]
+    #[test_case(r#""123" as integer"#, Value::Int(123) ; "text as u32")]
     fn text_check(input: &str, expect: Value) {
         let mut p = Parser::new(input);
-        p.text_parser_fns.push(("u32", |s: &str| -> Value {
-            Number(Number::U32(u32::from_str(s).unwrap()))
-        }));
+        p.text_parser_fns
+            .push(("integer", |s: &str| -> Value { str_to_number(s).unwrap() }));
         assert_eq!(expect, text()(&mut p).unwrap());
     }
 
@@ -437,7 +427,7 @@ mod test {
         );
     }
 
-    #[test_case("240 as u8", Number(Number::U8(240)) ; "240 as u8")]
+    #[test_case("240", Int(240) ; "240")]
     #[test_case("true", Bool(true) ; "true_val")]
     #[test_case("false", Bool(false) ; "false_val")]
     #[test_case(r#""false""#, Text("false".into()) ; "false_string_val")]
@@ -487,10 +477,10 @@ mod test {
         assert_eq!(err, op()(&mut p).err().unwrap());
     }
 
-    #[test_case("=7", Predicate{path: None, op: String::from("="), value: Number(Number::I32(7))}; "eq7")]
-    #[test_case("= 7", Predicate{path: None, op: String::from("="), value: Number(Number::I32(7))}; "eq 7")]
-    #[test_case("name len 3", Predicate{path: Some(String::from("name")), op: String::from("len"), value: Number(Number::I32(3))}; "name len 3")]
-    #[test_case("name len3", Predicate{path: Some(String::from("name")), op: String::from("len"), value: Number(Number::I32(3))}; "name len3")]
+    #[test_case("=7", Predicate{path: None, op: String::from("="), value: Int(7)}; "eq7")]
+    #[test_case("= 7", Predicate{path: None, op: String::from("="), value: Int(7)}; "eq 7")]
+    #[test_case("name len 3", Predicate{path: Some(String::from("name")), op: String::from("len"), value: Int(3)}; "name len 3")]
+    #[test_case("name len3", Predicate{path: Some(String::from("name")), op: String::from("len"), value: Int(3)}; "name len3")]
     fn predicate_check(input: &str, expect: Predicate) {
         let mut p = Parser::new(input);
         assert_eq!(expect, predicate()(&mut p).unwrap());
@@ -503,8 +493,8 @@ mod test {
         assert_eq!(err, predicate()(&mut p).err().unwrap());
     }
 
-    #[test_case("= 7", Filter::Predicate(Predicate{path: None, op: String::from("="), value: Number(Number::I32(7))}); "eq 7")]
-    #[test_case("name len 3", Filter::Predicate(Predicate{path: Some(String::from("name")), op: String::from("len"), value: Number(Number::I32(3))}); "name len 3")]
+    #[test_case("= 7", Filter::Predicate(Predicate{path: None, op: String::from("="), value: Int(7)}); "eq 7")]
+    #[test_case("name len 3", Filter::Predicate(Predicate{path: Some(String::from("name")), op: String::from("len"), value: Int(3)}); "name len 3")]
     fn filter_check(input: &str, expect: Filter) {
         let mut p = Parser::new(input);
         assert_eq!(expect, filter()(&mut p).unwrap());

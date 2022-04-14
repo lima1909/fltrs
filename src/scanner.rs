@@ -1,5 +1,3 @@
-#![allow(dead_code)] // TODO: remove this
-
 use crate::error::{Location, ParseError};
 
 use std::ops::ControlFlow;

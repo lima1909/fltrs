@@ -1,4 +1,4 @@
-use crate::value::{Number, Value};
+use crate::value::Value;
 use crate::{PathResolver, Predicate};
 
 pub type OperatorFn<PR> = fn(idx: usize, v: Value) -> Predicate<PR>;
@@ -72,8 +72,7 @@ fn gt<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
 
 fn len<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
     Box::new(move |pr| match v {
-        Value::Number(Number::Usize(l)) => pr.value(idx).to_string().len() == l,
-        Value::Number(Number::I32(l)) => pr.value(idx).to_string().len() == l as usize,
+        Value::Int(l) => pr.value(idx).to_string().len() == l as usize,
         _ => false,
     })
 }
@@ -127,14 +126,14 @@ mod test {
     #[test]
     fn exec_len_string() {
         let op = Operators::default();
-        let len = op.get("len", 0, Value::Number(Number::Usize(4))).unwrap();
+        let len = op.get("len", 0, Value::Int(4)).unwrap();
         assert!((len)(&String::from("Paul")));
     }
 
     #[test]
     fn exec_len_str() {
         let op = Operators::default();
-        let len = op.get("len", 0, Value::Number(Number::Usize(4))).unwrap();
+        let len = op.get("len", 0, Value::Int(4)).unwrap();
         assert!((len)(&"Paul"));
     }
 
@@ -169,10 +168,10 @@ mod test {
         assert!((exec)(&arg));
     }
 
-    #[test_case("=",  4.2, Value::Number(Number::F32(4.2))  ; "eq 4.2")]
-    #[test_case("!=",  4.2, Value::Number(Number::F32(5.3))  ; "ne 4.2")]
-    #[test_case(">",  4.2, Value::Number(Number::F32(3.1))  ; "gt 4.2")]
-    #[test_case("<",  4.2, Value::Number(Number::F32(5.3))  ; "lt 4.2")]
+    #[test_case("=",  4.2, Value::Float(4.2)  ; "eq 4.2")]
+    #[test_case("!=",  4.2, Value::Float(5.3)  ; "ne 4.2")]
+    #[test_case(">",  4.2, Value::Float(3.1)  ; "gt 4.2")]
+    #[test_case("<",  4.2, Value::Float(5.3)  ; "lt 4.2")]
     fn ops_f32(op: &str, arg: f32, val: Value) {
         let ops = Operators::default();
         let exec = ops.get(op, 0, val).unwrap();
