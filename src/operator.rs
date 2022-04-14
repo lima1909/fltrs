@@ -21,6 +21,8 @@ impl<PR: PathResolver> Default for Operators<PR> {
                 ("len", len),
                 ("starts_with", starts_with),
                 ("one_of", one_of),
+                #[cfg(feature = "regexp")]
+                ("regex", regex),
             ],
         }
     }
@@ -92,6 +94,21 @@ fn one_of<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
             return vs.iter().filter(|v| pr.value(idx).eq(*v)).count() > 0;
         }
         pr.value(idx).eq(&v)
+    })
+}
+
+#[cfg(feature = "regexp")]
+fn regex<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
+    let r = match regex::Regex::new(&v.to_string()) {
+        Ok(rg) => Some(rg),
+        Err(_) => None,
+    };
+
+    Box::new(move |pr| {
+        if let Some(rg) = &r {
+            return rg.is_match(&pr.value(idx).to_string());
+        }
+        false
     })
 }
 
@@ -176,5 +193,14 @@ mod test {
         let ops = Operators::default();
         let exec = ops.get(op, 0, val).unwrap();
         assert!((exec)(&arg));
+    }
+
+    #[cfg(feature = "regexp")]
+    #[test_case("[0-9]{2}-[0-9]{1}-[0-9]{2}", "34-5-67" => true  ; "34-5-67")]
+    #[test_case("[0-9]{2}-[0-9]{1}-[0-9]{2}", "1-1-1" => false  ; "1-1-1")]
+    fn ops_regex(regex: &str, input: &str) -> bool {
+        let ops = Operators::default();
+        let exec = ops.get("regex", 0, Value::Text(regex.to_string())).unwrap();
+        (exec)(&input)
     }
 }
