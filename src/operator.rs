@@ -1,7 +1,7 @@
 use crate::value::Value;
-use crate::{PathResolver, Predicate};
+use crate::{FltrError, PathResolver, Predicate, Result};
 
-pub type OperatorFn<PR> = fn(idx: usize, v: Value) -> Predicate<PR>;
+pub type OperatorFn<PR> = fn(idx: usize, v: Value) -> Result<Predicate<PR>>;
 
 pub struct Operators<PR> {
     op: Vec<(&'static str, OperatorFn<PR>)>,
@@ -29,13 +29,13 @@ impl<PR: PathResolver> Default for Operators<PR> {
 }
 
 impl<PR> Operators<PR> {
-    pub fn get(&self, op: &str, idx: usize, v: Value) -> Option<Predicate<PR>> {
+    pub fn get(&self, op: &str, idx: usize, v: Value) -> Result<Predicate<PR>> {
         for (n, f) in &self.op {
             if n == &op {
-                return Some(f(idx, v));
+                return f(idx, v);
             }
         }
-        None
+        Err(FltrError(format!("invalid operation: '{}'", op)))
     }
 
     pub fn starts_with_valid_op(&self, op: &str) -> Option<&str> {
@@ -48,68 +48,59 @@ impl<PR> Operators<PR> {
     }
 }
 
-fn eq<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
-    Box::new(move |pr| pr.value(idx) == &v)
+fn eq<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| pr.value(idx) == &v))
 }
 
-fn ne<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
-    Box::new(move |pr| pr.value(idx) != &v)
+fn ne<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| pr.value(idx) != &v))
 }
 
-fn le<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
-    Box::new(move |pr| pr.value(idx).le(&v))
+fn le<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| pr.value(idx).le(&v)))
 }
 
-fn lt<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
-    Box::new(move |pr| pr.value(idx).lt(&v))
+fn lt<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| pr.value(idx).lt(&v)))
 }
 
-fn ge<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
-    Box::new(move |pr| pr.value(idx).ge(&v))
+fn ge<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| pr.value(idx).ge(&v)))
 }
 
-fn gt<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
-    Box::new(move |pr| pr.value(idx).gt(&v))
+fn gt<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| pr.value(idx).gt(&v)))
 }
 
-fn len<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
-    Box::new(move |pr| match v {
+fn len<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| match v {
         Value::Int(l) => pr.value(idx).to_string().len() == l as usize,
         _ => false,
-    })
+    }))
 }
 
-fn starts_with<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
-    Box::new(move |pr| {
+fn starts_with<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| {
         if let Value::Text(s) = &v {
             return pr.value(idx).to_string().starts_with(s);
         }
         false
-    })
+    }))
 }
 
-fn one_of<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
-    Box::new(move |pr| {
+fn one_of<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| {
         if let Value::List(vs) = &v {
             return vs.iter().filter(|v| pr.value(idx).eq(*v)).count() > 0;
         }
         pr.value(idx).eq(&v)
-    })
+    }))
 }
 
 #[cfg(feature = "regexp")]
-fn regex<PR: PathResolver>(idx: usize, v: Value) -> Predicate<PR> {
-    let r = match regex::Regex::new(&v.to_string()) {
-        Ok(rg) => Some(rg),
-        Err(_) => None,
-    };
-
-    Box::new(move |pr| {
-        if let Some(rg) = &r {
-            return rg.is_match(&pr.value(idx).to_string());
-        }
-        false
-    })
+fn regex<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
+    let rg = regex::Regex::new(&v.to_string()).or_else(|e| Err(FltrError(e.to_string())))?;
+    Ok(Box::new(move |pr| rg.is_match(&pr.value(idx).to_string())))
 }
 
 #[cfg(test)]
@@ -129,8 +120,8 @@ mod test {
     #[test]
     fn get() {
         let op = Operators::<bool>::default();
-        assert!(op.get("=", 0, Value::Bool(true)).is_some());
-        assert!(op.get("foo", 0, Value::Bool(true)).is_none());
+        assert!(op.get("=", 0, Value::Bool(true)).is_ok());
+        assert!(op.get("foo", 0, Value::Bool(true)).is_err());
     }
 
     #[test]
@@ -196,11 +187,12 @@ mod test {
     }
 
     #[cfg(feature = "regexp")]
-    #[test_case("[0-9]{2}-[0-9]{1}-[0-9]{2}", "34-5-67" => true  ; "34-5-67")]
-    #[test_case("[0-9]{2}-[0-9]{1}-[0-9]{2}", "1-1-1" => false  ; "1-1-1")]
-    fn ops_regex(regex: &str, input: &str) -> bool {
+    #[test_case("[0-9]{2}-[0-9]{1}-[0-9]{2}", "34-5-67" => Ok(true)  ; "34-5-67")]
+    #[test_case("[0-9]{2}-[0-9]{1}-[0-9]{2}", "1-1-1" => Ok(false)  ; "1-1-1")]
+    #[test_case("[0-9]{2-[0-9]{1}-[0-9]{2}", "1-1-1" => Err(FltrError("regex parse error:\n    [0-9]{2-[0-9]{1}-[0-9]{2}\n         ^^\nerror: unclosed counted repetition".into()))  ; "error")]
+    fn ops_regex(regex: &str, input: &str) -> Result<bool> {
         let ops = Operators::default();
-        let exec = ops.get("regex", 0, Value::Text(regex.to_string())).unwrap();
-        (exec)(&input)
+        let exec = ops.get("regex", 0, Value::Text(regex.to_string()))?;
+        Ok((exec)(&input))
     }
 }

@@ -1,7 +1,6 @@
-use crate::error::FltrError;
 use crate::operator::Operators;
 use crate::token::{Exp, Filter};
-use crate::{PathResolver, Predicate, Result};
+use crate::{FltrError, PathResolver, Predicate, Result};
 
 pub struct Query<PR> {
     predicate: Predicate<PR>,
@@ -83,9 +82,7 @@ fn from_filter<PR: PathResolver + 'static>(
                     path, &p.value
                 ))
             })?;
-            Ok(ops
-                .get(&p.op, idx, p.value)
-                .ok_or_else(|| FltrError(format!("invalid operation: '{}'", &p.op)))?)
+            ops.get(&p.op, idx, p.value)
         }
         Filter::Not(exp) => Ok(Not(query(exp, ops)?.predicate).into()),
         Filter::Nested(exp) => Ok(query(exp, ops)?.predicate),

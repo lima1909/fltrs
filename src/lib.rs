@@ -8,7 +8,7 @@ pub mod value;
 
 use core::fmt::Display;
 
-use crate::error::FltrError;
+pub use crate::error::FltrError;
 use crate::value::Value;
 
 /// This is the default Result for the Filter trait definition.
