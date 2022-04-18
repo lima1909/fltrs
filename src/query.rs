@@ -3,7 +3,7 @@ use crate::token::{Exp, Filter};
 use crate::{FltrError, PathResolver, Predicate, Result};
 
 pub struct Query<PR> {
-    predicate: Predicate<PR>,
+    pub(crate) predicate: Predicate<PR>,
 }
 
 impl<PR> Query<PR> {
