@@ -21,7 +21,7 @@ impl<PR: PathResolver> Default for Operators<PR> {
                 ("len", len),
                 ("starts_with", starts_with),
                 ("one_of", one_of),
-                #[cfg(feature = "regexp")]
+                #[cfg(feature = "regex")]
                 ("regex", regex),
             ],
         }
@@ -97,7 +97,7 @@ fn one_of<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
     }))
 }
 
-#[cfg(feature = "regexp")]
+#[cfg(feature = "regex")]
 fn regex<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
     let rg = regex::Regex::new(&v.to_string()).or_else(|e| Err(FltrError(e.to_string())))?;
     Ok(Box::new(move |pr| rg.is_match(&pr.value(idx).to_string())))
@@ -186,7 +186,7 @@ mod test {
         assert!((exec)(&arg));
     }
 
-    #[cfg(feature = "regexp")]
+    #[cfg(feature = "regex")]
     #[test_case("[0-9]{2}-[0-9]{1}-[0-9]{2}", "34-5-67" => Ok(true)  ; "34-5-67")]
     #[test_case("[0-9]{2}-[0-9]{1}-[0-9]{2}", "1-1-1" => Ok(false)  ; "1-1-1")]
     #[test_case("[0-9]{2-[0-9]{1}-[0-9]{2}", "1-1-1" => Err(FltrError("regex parse error:\n    [0-9]{2-[0-9]{1}-[0-9]{2}\n         ^^\nerror: unclosed counted repetition".into()))  ; "error")]

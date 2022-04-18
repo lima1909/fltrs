@@ -9,8 +9,8 @@ edition = "2021"
 regex  = { version = "1.5", optional = true }
 
 [features]
-# default = [ "regexp" ]
-regexp = [ "regex" ]
+# default = [ "regex" ]
+regex = [ "dep:regex" ]
 
 [dev-dependencies]
 test-case = "2.0"
