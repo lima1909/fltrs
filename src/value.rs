@@ -35,6 +35,7 @@ pub(crate) fn str_to_number(s: &str) -> core::result::Result<Value, String> {
     }
 }
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! partial_eq_cmp {
         ( $val:path => $($t:ty) + ) => {

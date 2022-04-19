@@ -8,7 +8,7 @@ fn query(c: &mut Criterion) {
                 24,
                 get_points()
                     .into_iter()
-                    .filter(fltrs::fltrs(r#"x == 42 or name == "Point""#).unwrap())
+                    .filter(fltrs::query(r#"x == 42 or name == "Point""#).unwrap())
                     .count()
             );
         })

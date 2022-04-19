@@ -33,7 +33,18 @@ impl<F: Filterable> PathResolver for F {
 
 pub type Predicate<PR> = Box<dyn Fn(&PR) -> bool>;
 
-pub fn fltrs<PR: PathResolver + 'static>(query: &str) -> Result<Predicate<PR>> {
+/// The `query` function create a [`Predicate`] respectively [`core::ops::Fn`] with which you can,
+/// for example, execute a filter on a given slice.
+///
+/// # Example
+/// ```
+/// use fltrs::query;
+///
+/// assert_eq!(
+///     5, [3, 2, 1, 4, 5, 7, 5, 4, 3].into_iter().filter(query("> 1 and  < 5").unwrap()).count()
+/// );
+/// ```
+pub fn query<PR: PathResolver + 'static>(query: &str) -> Result<Predicate<PR>> {
     let exp = crate::parser::parse(query)?;
     let ops = crate::operator::Operators::<PR>::default();
     crate::query::query(exp, &ops)
@@ -42,19 +53,6 @@ pub fn fltrs<PR: PathResolver + 'static>(query: &str) -> Result<Predicate<PR>> {
 #[cfg(test)]
 mod test {
     use super::*;
-
-    #[test]
-    fn iter_i32_list_fltrs() -> Result<()> {
-        assert_eq!(
-            5,
-            [3, 2, 1, 4, 5, 7, 5, 4, 3]
-                .into_iter()
-                .filter(fltrs("> 1 and  < 5")?)
-                .count()
-        );
-
-        Ok(())
-    }
 
     struct Point {
         x: i8,
@@ -88,7 +86,7 @@ mod test {
     fn iter_point_fltrs() -> Result<()> {
         let l: Vec<Point> = [Point::new(2, 4), Point::new(3, 5)]
             .into_iter()
-            .filter(fltrs("x > 1 and  y < 5")?)
+            .filter(query("x > 1 and  y < 5")?)
             .collect();
         assert_eq!(1, l.len());
 
