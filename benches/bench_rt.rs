@@ -8,7 +8,7 @@ fn query(c: &mut Criterion) {
                 24,
                 get_points()
                     .into_iter()
-                    .filter(fltrs::fltrs(r#"x == 42 or name == "Point""#))
+                    .filter(fltrs::fltrs(r#"x == 42 or name == "Point""#).unwrap())
                     .count()
             );
         })
@@ -21,7 +21,7 @@ fn std_rust(c: &mut Criterion) {
             assert_eq!(
                 24,
                 get_points()
-                    .iter()
+                    .into_iter()
                     .filter(|p| p.x == 42 || p.name == String::from("Point"))
                     .count()
             );

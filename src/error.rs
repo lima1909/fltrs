@@ -15,6 +15,12 @@ impl std::error::Error for FltrError {
     }
 }
 
+impl From<ParseError> for FltrError {
+    fn from(p: ParseError) -> Self {
+        Self(p.to_string())
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct ParseError {
     pub input: String,

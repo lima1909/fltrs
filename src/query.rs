@@ -2,36 +2,7 @@ use crate::operator::Operators;
 use crate::token::{Exp, Filter};
 use crate::{FltrError, PathResolver, Predicate, Result};
 
-pub struct Query<PR> {
-    pub(crate) predicate: Predicate<PR>,
-}
-
-impl<PR> Query<PR> {
-    pub fn new(p: Predicate<PR>) -> Self {
-        Self { predicate: p }
-    }
-
-    pub fn predicate(&self) -> &dyn Fn(&PR) -> bool {
-        &*self.predicate
-    }
-
-    pub fn for_value(&self, arg: &PR) -> bool {
-        (self.predicate)(arg)
-    }
-
-    pub fn for_iter<I>(&self, iter: I) -> Vec<PR>
-    where
-        I: Iterator<Item = PR>,
-    {
-        iter.filter(|arg| (self.predicate)(arg)).collect()
-    }
-
-    pub fn for_slice<'a, V>(&self, slice: &'a [PR]) -> Vec<&'a PR> {
-        slice.iter().filter(|arg| (self.predicate)(arg)).collect()
-    }
-}
-
-pub fn query<PR: PathResolver + 'static>(exp: Exp, ops: &Operators<PR>) -> Result<Query<PR>> {
+pub fn query<PR: PathResolver + 'static>(exp: Exp, ops: &Operators<PR>) -> Result<Predicate<PR>> {
     if exp.ands.is_empty() {
         return Err(FltrError("empty expression is not allowed".into()));
     }
@@ -66,7 +37,7 @@ pub fn query<PR: PathResolver + 'static>(exp: Exp, ops: &Operators<PR>) -> Resul
         }
     }
 
-    Ok(Query::new(query))
+    Ok(query)
 }
 
 fn from_filter<PR: PathResolver + 'static>(
@@ -84,8 +55,8 @@ fn from_filter<PR: PathResolver + 'static>(
             })?;
             ops.get(&p.op, idx, p.value)
         }
-        Filter::Not(exp) => Ok(Not(query(exp, ops)?.predicate).into()),
-        Filter::Nested(exp) => Ok(query(exp, ops)?.predicate),
+        Filter::Not(exp) => Ok(Not(query(exp, ops)?).into()),
+        Filter::Nested(exp) => Ok(query(exp, ops)?),
     }
 }
 
@@ -115,7 +86,7 @@ mod test {
     #[test_case("< 7" => false; "lt 7")]
     fn query_i32(input: &str) -> bool {
         let exp = parse(input).unwrap();
-        query(exp, &Operators::default()).unwrap().for_value(&7)
+        (query(exp, &Operators::default()).unwrap())(&7)
     }
 
     #[test_case(r#"= "Jasmin""# => true; "eq Jasmin")]
@@ -126,9 +97,7 @@ mod test {
     fn query_string(input: &str) -> bool {
         // assert!('c' > 'C');
         let exp = parse(input).unwrap();
-        query(exp, &Operators::default())
-            .unwrap()
-            .for_value(&"Jasmin")
+        (query(exp, &Operators::default()).unwrap())(&"Jasmin")
     }
 
     #[test_case(r#"= "Jasmin""# => true; "eq Jasmin")]
@@ -144,9 +113,7 @@ mod test {
     #[test_case(r#"!= "Inge" and (!= "Paul" and != "Peter")"# => true; "nested ne Inge and ne Paul and ne Peter")]
     fn query_nested_not(input: &str) -> bool {
         let exp = parse(input).unwrap();
-        query(exp, &Operators::default())
-            .unwrap()
-            .for_value(&"Jasmin")
+        (query(exp, &Operators::default()).unwrap())(&"Jasmin")
     }
 
     struct Car<'a> {
@@ -188,7 +155,7 @@ mod test {
             size: 54,
         };
         let exp = parse(input).unwrap();
-        query(exp, &Operators::default()).unwrap().for_value(&car)
+        (query(exp, &Operators::default()).unwrap())(&car)
     }
 
     #[test_case(r#"name = "BMW" and ps > 100"# => true; "name eq BMW and ps gt 100")]
@@ -200,7 +167,7 @@ mod test {
             size: 54,
         };
         let exp = parse(input).unwrap();
-        query(exp, &Operators::default()).unwrap().for_value(&car)
+        (query(exp, &Operators::default()).unwrap())(&car)
     }
 
     #[test_case(r#"name = "BMW" or ps > 100"# => true; "name eq BMW or ps gt 100")]
@@ -214,7 +181,7 @@ mod test {
             size: 54,
         };
         let exp = parse(input).unwrap();
-        query(exp, &Operators::default()).unwrap().for_value(&car)
+        (query(exp, &Operators::default()).unwrap())(&car)
     }
 
     #[test_case(r#"name = "BMW" and ps != 100 or size = 54"# => true; "and or")]
@@ -227,7 +194,7 @@ mod test {
             size: 54,
         };
         let exp = parse(input).unwrap();
-        query(exp, &Operators::default()).unwrap().for_value(&car)
+        (query(exp, &Operators::default()).unwrap())(&car)
     }
 
     #[test_case(r#"name = "BMW" "# => true; "name eq BMW")]
@@ -250,7 +217,7 @@ mod test {
             size: 54,
         };
         let exp = parse(input).unwrap();
-        query(exp, &Operators::default()).unwrap().for_value(&car)
+        (query(exp, &Operators::default()).unwrap())(&car)
     }
 
     #[test_case(r#"= "bmw""#, FltrError("invalid path: '' for value: 'bmw'".into()); "empty path")]
