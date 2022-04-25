@@ -8,13 +8,13 @@ use std::{
     str::FromStr,
 };
 
-pub type TextParserFn = fn(text: &str) -> Value;
+pub type AsValueFn = fn(val: Value) -> Value;
 
 pub(crate) struct Parser<'a> {
     s: Scanner<'a>,
     ops: Operators<bool>,
     exp: Option<Exp>,
-    text_parser_fns: Vec<(&'static str, TextParserFn)>,
+    as_value_fns: Vec<(&'static str, AsValueFn)>,
 }
 
 impl<'a> Parser<'a> {
@@ -23,14 +23,19 @@ impl<'a> Parser<'a> {
             s: Scanner::new(input),
             ops: Operators::default(),
             exp: None,
-            text_parser_fns: vec![],
+            as_value_fns: vec![],
         }
     }
 
-    fn get_text_parser_fn(&self, p: &str) -> Option<&TextParserFn> {
-        self.text_parser_fns
+    pub(crate) fn get_fn(&self, p: &str) -> Option<&AsValueFn> {
+        self.as_value_fns
             .iter()
             .find_map(|(tp, f)| if *tp == p { Some(f) } else { None })
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn add_fn(&mut self, name: &'static str, f: AsValueFn) {
+        self.as_value_fns.push((name, f));
     }
 }
 
@@ -145,7 +150,7 @@ pub(crate) fn predicate() -> impl FnMut(&mut Parser) -> Result<Predicate> {
         Ok(Predicate {
             path: p,
             op: op_str,
-            value: iws(parser, value())?,
+            value: iws(parser, value_with_as())?,
         })
     }
 }
@@ -177,6 +182,24 @@ pub(crate) fn is_valid_path(pos: usize, c: &char) -> core::result::Result<bool, 
     }
 }
 
+pub(crate) fn value_with_as() -> impl FnMut(&mut Parser) -> Result<Value> {
+    |parser: &mut Parser| {
+        let v = value()(parser)?;
+        let as_type = iws(parser, with_as())?;
+        if as_type.is_empty() {
+            return Ok(v);
+        }
+
+        match parser.get_fn(&as_type) {
+            Some(f) => Ok((f)(v)),
+            None => Err(parser.parse_err(&format!(
+                "unknown function: '{}' for converting the value: '{}'",
+                as_type, v
+            ))),
+        }
+    }
+}
+
 pub(crate) fn value() -> impl FnMut(&mut Parser) -> Result<Value> {
     |parser: &mut Parser| match parser.s.look() {
         Some(c) => match c {
@@ -193,21 +216,7 @@ pub(crate) fn value() -> impl FnMut(&mut Parser) -> Result<Value> {
 
 #[inline]
 pub(crate) fn text() -> impl FnMut(&mut Parser) -> Result<Value> {
-    |parser: &mut Parser| {
-        let text = parser.take_surround(&'"', &'"')?;
-        let as_type = iws(parser, with_as())?;
-        if as_type.is_empty() {
-            return Ok(Text(text));
-        }
-
-        match parser.get_text_parser_fn(&as_type) {
-            Some(f) => Ok((f)(&text)),
-            None => Err(parser.parse_err(&format!(
-                "unknown function: '{}' for converting the text: '{}'",
-                as_type, text
-            ))),
-        }
-    }
+    |parser: &mut Parser| Ok(Text(parser.take_surround(&'"', &'"')?))
 }
 
 #[inline]
@@ -387,25 +396,25 @@ mod test {
 
     #[test_case("a1.34", ParseError {input: "a1.34".into(),location: Location { line: 1, column: 1 },err_msg: "expected numeric character or a minus".into()} ; "a1.34")]
     #[test_case("1a34", ParseError {input: "1a34".into(),location: Location { line: 1, column: 2 },err_msg: "expected numeric character or a dot".into()} ; "1a34")]
-    #[test_case("2400000000", ParseError {input: "2400000000".into(),location: Location { line: 1, column: 10},err_msg: "number too large to fit in target type".into()} ; "240 as i8")]
+    #[test_case("2400000000", ParseError {input: "2400000000".into(),location: Location { line: 1, column: 10},err_msg: "number too large to fit in target type".into()} ; "240 as i32")]
     fn number_err(input: &str, err: ParseError) {
         let mut p = Parser::new(input);
         assert_eq!(err, number()(&mut p).err().unwrap());
     }
 
-    #[test_case(r#""yeh""#, Value::Text("yeh".into()) ; "simple text")]
-    #[test_case(r#""123" as integer"#, Value::Int(123) ; "text as u32")]
-    fn text_check(input: &str, expect: Value) {
+    #[test_case(r#""yeh""#, |v: Value| -> Value { str_to_number(&v.to_string()).unwrap() }=>Value::Text("yeh".into()) ; "no as value")]
+    #[test_case(r#""123" as to_val"#, |v: Value| -> Value { str_to_number(&v.to_string()).unwrap() } => Value::Int(123) ; "text as Int32")]
+    #[test_case(r#"123 as to_val"#, |v: Value| -> Value { if let Value::Int(i) = v { Value::Int(i * 2) } else { Value::Int(0) } } => Value::Int(246) ; "double 123")]
+    fn value_with_as_check(input: &str, as_val_fn: AsValueFn) -> Value {
         let mut p = Parser::new(input);
-        p.text_parser_fns
-            .push(("integer", |s: &str| -> Value { str_to_number(s).unwrap() }));
-        assert_eq!(expect, text()(&mut p).unwrap());
+        p.add_fn("to_val", as_val_fn);
+        value_with_as()(&mut p).unwrap()
     }
 
-    #[test_case(r#""123" as u32"#, ParseError {input: r#""123" as u32"#.into(),location: Location { line: 1, column: 12},err_msg: "unknown function: 'u32' for converting the text: '123'".into()} ; "240 as i8")]
-    fn text_err(input: &str, err: ParseError) {
+    #[test_case(r#""123" as u32"#, ParseError {input: r#""123" as u32"#.into(),location: Location { line: 1, column: 12},err_msg: "unknown function: 'u32' for converting the value: '123'".into()} ; "240 as i8")]
+    fn value_with_as_err(input: &str, err: ParseError) {
         let mut p = Parser::new(input);
-        assert_eq!(err, text()(&mut p).err().unwrap());
+        assert_eq!(err, value_with_as()(&mut p).err().unwrap());
     }
 
     #[test]
