@@ -65,8 +65,8 @@
 //!
 pub mod error;
 pub mod operator;
-pub mod parser;
-pub mod query;
+mod parser;
+mod query;
 mod scanner;
 mod token;
 pub mod value;
@@ -83,8 +83,42 @@ pub trait Filterable: PartialEq<Value> + PartialOrd<Value> + Display {}
 
 impl<V: PartialEq<Value> + PartialOrd<Value> + Display> Filterable for V {}
 
+/// PathResolver is a possibility to get the value from a field of an given struct.
+///
+/// ### Example:
+/// ```
+/// use fltrs::{PathResolver, Filterable};
+///
+/// struct Point {
+///     name: &'static str,
+///     x:    i32,
+///     y:    i32,
+/// }
+///
+/// impl PathResolver for Point {
+///     fn path_to_index(path: &str) -> Option<usize> {
+///         match path {
+///             "name"  => Some(0),
+///             "x"     => Some(1),
+///             "y"     => Some(2),
+///             _ => None,
+///         }
+///     }
+///
+///     fn value(&self, idx: usize) -> &dyn Filterable {
+///         match idx {
+///             0 => &self.name,
+///             1 => &self.x,
+///             _ => &self.y,
+///         }
+///     }
+/// }
+
 pub trait PathResolver {
+    /// Is the mapping from a path (struct field name) to an index (that is used by the value-function).
+    /// If the path is not a valid, than is the return value: `None`.
     fn path_to_index(path: &str) -> Option<usize>;
+    /// The value of the struct field with the given index.
     fn value(&self, idx: usize) -> &dyn Filterable;
 }
 
@@ -109,12 +143,12 @@ pub type Predicate<PR> = Box<dyn Fn(&PR) -> bool>;
 /// use fltrs::query;
 ///
 /// assert_eq!(
+///     ["Inge", "Paul", "Peter", "Ina"],
 ///     ["Inge", "Paul", "Peter", "Jasmin", "Ina", "Mario"]
 ///                 .into_iter()
 ///                 .filter(query(r#"starts_with "I" or starts_with "P""#).unwrap())
 ///                 .collect::<Vec<&str>>()
 ///                 .as_slice(),
-///     ["Inge", "Paul", "Peter", "Ina"],
 /// );
 /// ```
 pub fn query<PR: PathResolver + 'static>(query: &str) -> Result<Predicate<PR>> {
