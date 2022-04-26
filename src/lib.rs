@@ -72,7 +72,10 @@ mod token;
 pub mod value;
 
 pub use crate::error::FltrError;
+use crate::operator::{OperatorFn, Operators};
+use crate::parser::{parse, AsValueFn, Parser};
 use crate::value::Value;
+
 use core::fmt::Display;
 
 /// The default [`core::result::Result`] with the error: [`FltrError`].
@@ -152,9 +155,38 @@ pub type Predicate<PR> = Box<dyn Fn(&PR) -> bool>;
 /// );
 /// ```
 pub fn query<PR: PathResolver + 'static>(query: &str) -> Result<Predicate<PR>> {
-    let exp = crate::parser::parse(query)?;
-    let ops = crate::operator::Operators::<PR>::default();
-    crate::query::query(exp, &ops)
+    crate::query::query(parse(query)?, &Operators::<PR>::default())
+}
+
+pub struct Query<PR> {
+    ops: Operators<PR>,
+    as_value_fn: Vec<(&'static str, AsValueFn)>,
+}
+
+impl<PR: PathResolver + 'static> Query<PR> {
+    pub fn build() -> Self {
+        Self {
+            ops: Operators::default(),
+            as_value_fn: vec![],
+        }
+    }
+
+    pub fn operators(mut self, ops: &[(&'static str, OperatorFn<PR>)]) -> Self {
+        self.ops.op.extend_from_slice(ops);
+        self
+    }
+
+    pub fn as_value_fn(mut self, fns: &[(&'static str, AsValueFn)]) -> Self {
+        self.as_value_fn.extend_from_slice(fns);
+        self
+    }
+
+    pub fn query(&self, query: &str) -> Result<Predicate<PR>> {
+        let mut p = Parser::new(query);
+        p.ops = self.ops.get_ops_names();
+        p.as_value_fns = self.as_value_fn.clone();
+        crate::query::query(p.parse()?, &self.ops)
+    }
 }
 
 #[cfg(test)]
@@ -191,11 +223,56 @@ mod test {
 
     #[test]
     fn iter_point_fltrs() -> Result<()> {
-        let l: Vec<Point> = [Point::new(2, 4), Point::new(3, 5)]
-            .into_iter()
-            .filter(query("x > 1 and  y < 5")?)
-            .collect();
-        assert_eq!(1, l.len());
+        assert_eq!(
+            1,
+            [Point::new(2, 4), Point::new(3, 5)]
+                .into_iter()
+                .filter(query("x > 1 and  y < 5")?)
+                .count()
+        );
+
+        Ok(())
+    }
+
+    fn always_true<PR: PathResolver>(_idx: usize, _v: Value) -> Result<Predicate<PR>> {
+        Ok(Box::new(move |_pr| true))
+    }
+
+    #[test]
+    fn query_builder_op() -> Result<()> {
+        let query = Query::build()
+            .operators(&[("always_true", always_true)])
+            .query("x always_true 5")?;
+
+        assert_eq!(
+            2,
+            [Point::new(2, 4), Point::new(3, 5)]
+                .into_iter()
+                .filter(query)
+                .count()
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn query_builder_as_value_fn() -> Result<()> {
+        let query = Query::build()
+            .as_value_fn(&[("double", |v| {
+                if let Value::Int(x) = v {
+                    return Value::Int(x * 2);
+                }
+                v
+            })])
+            .query("x > 1 as double and  y < 6")?;
+
+        assert_eq!(
+            1,
+            [Point::new(2, 2), Point::new(5, 5)]
+                .into_iter()
+                .filter(query)
+                .count()
+        );
 
         Ok(())
     }

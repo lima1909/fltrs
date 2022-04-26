@@ -11,20 +11,40 @@ use std::{
 pub type AsValueFn = fn(val: Value) -> Value;
 
 pub(crate) struct Parser<'a> {
-    s: Scanner<'a>,
-    ops: Operators<bool>,
     exp: Option<Exp>,
-    as_value_fns: Vec<(&'static str, AsValueFn)>,
+    s: Scanner<'a>,
+    pub(crate) ops: Vec<&'static str>,
+    pub(crate) as_value_fns: Vec<(&'static str, AsValueFn)>,
 }
 
 impl<'a> Parser<'a> {
     pub(crate) fn new(input: &'a str) -> Self {
         Parser {
-            s: Scanner::new(input),
-            ops: Operators::default(),
             exp: None,
+            s: Scanner::new(input),
+            ops: Operators::<bool>::default().get_ops_names(),
             as_value_fns: vec![],
         }
+    }
+
+    pub(crate) fn parse(mut self) -> Result<Exp> {
+        let f = iws(&mut self, filter())?;
+        self.exp = Some(Exp::new(f));
+
+        loop {
+            if self.s.look_str("or") {
+                iws(&mut self, or())?;
+            } else if self.s.look_str("and") {
+                iws(&mut self, and())?;
+            } else {
+                let _ = self.take_while(is_ws);
+                if self.is_done() {
+                    break;
+                }
+                return Err(self.parse_err("expected key word 'or' or 'and'"));
+            }
+        }
+        Ok(self.exp.take().unwrap())
     }
 
     pub(crate) fn get_fn(&self, p: &str) -> Option<&AsValueFn> {
@@ -36,6 +56,15 @@ impl<'a> Parser<'a> {
     #[allow(dead_code)]
     pub(crate) fn add_fn(&mut self, name: &'static str, f: AsValueFn) {
         self.as_value_fns.push((name, f));
+    }
+
+    pub fn starts_with_valid_op(&self, op: &str) -> Option<String> {
+        for s in &self.ops {
+            if op.starts_with(s) {
+                return Some(s.to_string());
+            }
+        }
+        None
     }
 }
 
@@ -58,24 +87,7 @@ impl<'a> DerefMut for Parser<'a> {
 ///////////////////////////////////////////////////////////////////////////////
 
 pub fn parse(input: &str) -> Result<Exp> {
-    let mut parser = Parser::new(input);
-    let f = iws(&mut parser, filter())?;
-    parser.exp = Some(Exp::new(f));
-
-    loop {
-        if parser.s.look_str("or") {
-            iws(&mut parser, or())?;
-        } else if parser.s.look_str("and") {
-            iws(&mut parser, and())?;
-        } else {
-            let _ = parser.take_while(is_ws);
-            if parser.is_done() {
-                break;
-            }
-            return Err(parser.parse_err("expected key word 'or' or 'and'"));
-        }
-    }
-    Ok(parser.exp.take().unwrap())
+    Parser::new(input).parse()
 }
 
 pub(crate) fn or() -> impl FnMut(&mut Parser) -> Result<()> {
@@ -157,9 +169,9 @@ pub(crate) fn predicate() -> impl FnMut(&mut Parser) -> Result<Predicate> {
 
 pub(crate) fn op() -> impl FnMut(&mut Parser) -> Result<String> {
     |parser: &mut Parser| {
-        let op_str = parser.look_while(is_not_ws)?;
-        if let Some(op) = parser.ops.starts_with_valid_op(&op_str) {
-            parser.s.take(op);
+        let op_str = parser.s.look_while(is_not_ws)?;
+        if let Some(op) = parser.starts_with_valid_op(&op_str) {
+            parser.s.take(&op);
             return Ok(op.to_string());
         }
         Err(parser.parse_err(&format!("'{op_str}' is not a valid filter operation")))
@@ -306,6 +318,15 @@ mod test {
     use super::*;
     use crate::error::{Location, ParseError};
     use test_case::test_case;
+
+    #[test]
+    fn starts_with_valid_op() {
+        let p = Parser::new("");
+        assert_eq!(Some("==".into()), p.starts_with_valid_op("=="));
+        assert_eq!(Some("=".into()), p.starts_with_valid_op("="));
+        assert_eq!(Some("=".into()), p.starts_with_valid_op("=7"));
+        assert_eq!(None, p.starts_with_valid_op("foo"));
+    }
 
     #[test_case("true", "true", true; "_true")]
     #[test_case("false xyz", "false", false ; "_false")]

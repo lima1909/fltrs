@@ -19,7 +19,7 @@ use crate::{FltrError, PathResolver, Predicate, Result};
 pub type OperatorFn<PR> = fn(idx: usize, v: Value) -> Result<Predicate<PR>>;
 
 pub struct Operators<PR> {
-    op: Vec<(&'static str, OperatorFn<PR>)>,
+    pub(crate) op: Vec<(&'static str, OperatorFn<PR>)>,
 }
 
 impl<PR: PathResolver> Default for Operators<PR> {
@@ -53,13 +53,8 @@ impl<PR> Operators<PR> {
         Err(FltrError(format!("invalid operation: '{}'", op)))
     }
 
-    pub fn starts_with_valid_op(&self, op: &str) -> Option<&str> {
-        for (n, _) in &self.op {
-            if op.starts_with(n) {
-                return Some(n);
-            }
-        }
-        None
+    pub fn get_ops_names(&self) -> Vec<&'static str> {
+        self.op.iter().map(|(s, _)| *s).collect()
     }
 }
 
@@ -122,15 +117,6 @@ fn regex<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
 mod test {
     use super::*;
     use test_case::test_case;
-
-    #[test]
-    fn starts_with_valid_op() {
-        let op = Operators::<bool>::default();
-        assert_eq!(Some("=="), op.starts_with_valid_op("=="));
-        assert_eq!(Some("="), op.starts_with_valid_op("="));
-        assert_eq!(Some("="), op.starts_with_valid_op("=7"));
-        assert_eq!(None, op.starts_with_valid_op("foo"));
-    }
 
     #[test]
     fn get() {
