@@ -1,3 +1,18 @@
+//! The operator mod contains operators, from which the predicates are defined.
+//!
+//! ### Overview:
+//!
+//! | operator      | meaning             | example                     |
+//! |---------------|---------------------|---------------------------- |
+//! | `=` or `==`   | equal               | `= 5` or `name = "Peter"`   |
+//! | `!=`          | not equal           | `!= 5` or `name != "Peter"` |
+//! | `<`           | less                | `< 5`                       |
+//! | `<=`          | less equal          | `<= 5`                      |
+//! | `>`           | greater             | `> 5`                       |
+//! | `>=`          | greater equal       | `>= 5`                      |
+//! | `len`         | length of an string | `name len 5`                |
+//! | `starts_with` | string starts with  | `name starts_with "Pe"`     |
+//!
 use crate::value::Value;
 use crate::{FltrError, PathResolver, Predicate, Result};
 

@@ -1,3 +1,4 @@
+//! The value mod contains different value types, which are the result of the parse process.
 use core::fmt::{Debug, Display};
 use core::str::FromStr;
 
