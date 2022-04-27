@@ -262,18 +262,18 @@ mod test {
         Ok(())
     }
 
-    // #[test]
-    // fn iter_point_fltrs_one_of() -> Result<()> {
-    //     assert_eq!(
-    //         1,
-    //         [Point::new(2, 4), Point::new(3, 5)]
-    //             .into_iter()
-    //             .filter(query("x one_of [1, 2, 5, 7]")?)
-    //             .count()
-    //     );
+    #[test]
+    fn iter_point_one_of() -> Result<()> {
+        assert_eq!(
+            2,
+            [Point::new(2, 4), Point::new(3, 5), Point::new(4, 6)]
+                .into_iter()
+                .filter(query("x one_of [1, 2, 7, 4]")?)
+                .count()
+        );
 
-    //     Ok(())
-    // }
+        Ok(())
+    }
 
     fn always_true<PR: PathResolver>(_idx: usize, _v: Value) -> Result<Predicate<PR>> {
         Ok(Box::new(move |_pr| true))

@@ -220,9 +220,24 @@ pub(crate) fn value() -> impl FnMut(&mut Parser) -> Result<Value> {
             't' => Ok(Bool(map("true")(parser)?)),
             'f' => Ok(Bool(map("false")(parser)?)),
             '-' | '0'..='9' => Ok(number()(parser)?),
+            '[' => list()(parser),
             _ => Err(parser.parse_err(&format!("unexpected char '{}' for a valid Value", c))),
         },
         None => Err(parser.parse_err("unexpected end")),
+    }
+}
+
+#[inline]
+pub(crate) fn list() -> impl FnMut(&mut Parser) -> Result<Value> {
+    |parser: &mut Parser| {
+        let list_str = parser.take_surround(&'[', &']')?;
+        let mut values = vec![];
+        for el in list_str.split(',') {
+            let mut p = Parser::new(el);
+            let v = iws(&mut p, value())?;
+            values.push(v);
+        }
+        Ok(List(values))
     }
 }
 
@@ -475,6 +490,22 @@ mod test {
         let mut p = Parser::new(input);
         assert_eq!(err, value()(&mut p).err().unwrap());
     }
+
+    #[test_case(r#"[1]"# => List(vec![Int(1)]) ; "list_1")]
+    #[test_case(r#"[1, 2]"# => List(vec![Int(1), Int(2)]) ; "list_1_2")]
+    #[test_case(r#"[1, 2, 5]"# => List(vec![Int(1), Int(2), Int(5)]) ; "list_1_2_5")]
+    #[test_case(r#"[1, 'A', true]"# => List(vec![Int(1), Char('A'), Bool(true)]) ; "list_1_A_true")]
+    #[test_case(r#"["aA", "Bb"]"# => List(vec![Text("aA".into()), Text("Bb".into())]) ; "list_aA_Bb")]
+    fn list_value_check(input: &str) -> Value {
+        let mut p = Parser::new(input);
+        value()(&mut p).unwrap()
+    }
+
+    // #[test_case(r#"[ ]"# => ParseError {input: "foo".into(),location: Location { line: 1, column: 1},err_msg: "expected input: 'false' not found".into()} ; "list_empty")]
+    // fn list_value_err(input: &str) -> ParseError {
+    //     let mut p = Parser::new(input);
+    //     value()(&mut p).err().unwrap()
+    // }
 
     #[test_case("name", "name")]
     #[test_case("name1", "name1")]
