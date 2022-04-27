@@ -221,6 +221,34 @@ mod test {
         }
     }
 
+    #[cfg(feature = "regex")]
+    #[test]
+    fn iter_regex() -> Result<()> {
+        assert_eq!(
+            2,
+            [1, 22, 333]
+                .into_iter()
+                .filter(query(r#"regex "[0-9]{2}""#)?)
+                .count()
+        );
+
+        Ok(())
+    }
+
+    #[cfg(feature = "regex")]
+    #[test]
+    fn iter_point_regex() -> Result<()> {
+        assert_eq!(
+            1,
+            [Point::new(22, 4), Point::new(3, 5)]
+                .into_iter()
+                .filter(query(r#"x regex "[0-9]{2}""#)?)
+                .count()
+        );
+
+        Ok(())
+    }
+
     #[test]
     fn iter_point_fltrs() -> Result<()> {
         assert_eq!(
@@ -233,6 +261,19 @@ mod test {
 
         Ok(())
     }
+
+    // #[test]
+    // fn iter_point_fltrs_one_of() -> Result<()> {
+    //     assert_eq!(
+    //         1,
+    //         [Point::new(2, 4), Point::new(3, 5)]
+    //             .into_iter()
+    //             .filter(query("x one_of [1, 2, 5, 7]")?)
+    //             .count()
+    //     );
+
+    //     Ok(())
+    // }
 
     fn always_true<PR: PathResolver>(_idx: usize, _v: Value) -> Result<Predicate<PR>> {
         Ok(Box::new(move |_pr| true))

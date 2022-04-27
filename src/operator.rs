@@ -2,16 +2,18 @@
 //!
 //! ### Overview:
 //!
-//! | operator      | meaning             | example                     |
-//! |---------------|---------------------|---------------------------- |
-//! | `=` or `==`   | equal               | `= 5` or `name = "Peter"`   |
-//! | `!=`          | not equal           | `!= 5` or `name != "Peter"` |
-//! | `<`           | less                | `< 5`                       |
-//! | `<=`          | less equal          | `<= 5`                      |
-//! | `>`           | greater             | `> 5`                       |
-//! | `>=`          | greater equal       | `>= 5`                      |
-//! | `len`         | length of an string | `name len 5`                |
-//! | `starts_with` | string starts with  | `name starts_with "Pe"`     |
+//! | operator      | meaning                           | example                     |
+//! |---------------|---------------------------------- |---------------------------- |
+//! | `=` or `==`   | equal                             | `= 5` or `name = "Peter"`   |
+//! | `!=`          | not equal                         | `!= 5` or `name != "Peter"` |
+//! | `<`           | less                              | `< 5`                       |
+//! | `<=`          | less equal                        | `<= 5`                      |
+//! | `>`           | greater                           | `> 5`                       |
+//! | `>=`          | greater equal                     | `>= 5`                      |
+//! | `len`         | length of an string               | `name len 5`                |
+//! | `starts_with` | string starts with                | `name starts_with "Pe"`     |
+//! | `one_of`      | one element from given list       | `x one_of [1, 3, 7]`        |
+//! | `regex`       | regexpression (feature = "regex") | `x regex "[0-9]{2}"`        |
 //!
 use crate::value::Value;
 use crate::{FltrError, PathResolver, Predicate, Result};
