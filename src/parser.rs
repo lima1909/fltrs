@@ -217,10 +217,10 @@ pub(crate) fn value() -> impl FnMut(&mut Parser) -> Result<Value> {
         Some(c) => match c {
             '"' => text()(parser),
             '\'' => char()(parser),
+            '[' => list()(parser),
+            '-' | '0'..='9' => number()(parser),
             't' => Ok(Bool(map("true")(parser)?)),
             'f' => Ok(Bool(map("false")(parser)?)),
-            '-' | '0'..='9' => Ok(number()(parser)?),
-            '[' => list()(parser),
             _ => Err(parser.parse_err(&format!("unexpected char '{}' for a valid Value", c))),
         },
         None => Err(parser.parse_err("unexpected end")),
@@ -230,13 +230,17 @@ pub(crate) fn value() -> impl FnMut(&mut Parser) -> Result<Value> {
 #[inline]
 pub(crate) fn list() -> impl FnMut(&mut Parser) -> Result<Value> {
     |parser: &mut Parser| {
-        let list_str = parser.take_surround(&'[', &']')?;
+        parser.take("[");
         let mut values = vec![];
-        for el in list_str.split(',') {
-            let mut p = Parser::new(el);
-            let v = iws(&mut p, value())?;
+        loop {
+            let v = iws(parser, value())?;
             values.push(v);
+            if parser.take("]") {
+                break;
+            }
+            parser.take(",");
         }
+
         Ok(List(values))
     }
 }
@@ -272,7 +276,7 @@ pub(crate) fn is_number(pos: usize, c: &char) -> core::result::Result<bool, &str
     } else if pos == 0 && !(c.is_numeric() || c.eq(&'-')) {
         Err("expected numeric character or a minus")
     } else if pos != 0 && !(c.is_numeric() || c.eq(&'.')) {
-        Err("expected numeric character or a dot")
+        Ok(false)
     } else {
         Ok(true)
     }
@@ -425,13 +429,13 @@ mod test {
     #[test_case("-240" => Int(-240); "minus 240")]
     #[test_case("-1.34 as f32" => Float(-1.34) ; "minus 1.34 as f32")]
     #[test_case("240 as u8" => Int(240) ; "240 as u8")]
+    #[test_case("1a34" => Int(1) ; "1a34")]
     fn number_check(input: &str) -> Value {
         let mut p = Parser::new(input);
         number()(&mut p).unwrap()
     }
 
     #[test_case("a1.34", ParseError {input: "a1.34".into(),location: Location { line: 1, column: 1 },err_msg: "expected numeric character or a minus".into()} ; "a1.34")]
-    #[test_case("1a34", ParseError {input: "1a34".into(),location: Location { line: 1, column: 2 },err_msg: "expected numeric character or a dot".into()} ; "1a34")]
     #[test_case("2400000000", ParseError {input: "2400000000".into(),location: Location { line: 1, column: 10},err_msg: "number too large to fit in target type".into()} ; "240 as i32")]
     fn number_err(input: &str, err: ParseError) {
         let mut p = Parser::new(input);
@@ -492,7 +496,9 @@ mod test {
     }
 
     #[test_case(r#"[1]"# => List(vec![Int(1)]) ; "list_1")]
-    #[test_case(r#"[1, 2]"# => List(vec![Int(1), Int(2)]) ; "list_1_2")]
+    #[test_case(r#"[ 1]"# => List(vec![Int(1)]) ; "list_space_1")]
+    #[test_case(r#"[1 ]"# => List(vec![Int(1)]) ; "list_1_space")]
+    #[test_case(r#"[ 1, 2]"# => List(vec![Int(1), Int(2)]) ; "list_1_2")]
     #[test_case(r#"[1, 2, 5]"# => List(vec![Int(1), Int(2), Int(5)]) ; "list_1_2_5")]
     #[test_case(r#"[1, 'A', true]"# => List(vec![Int(1), Char('A'), Bool(true)]) ; "list_1_A_true")]
     #[test_case(r#"["aA", "Bb"]"# => List(vec![Text("aA".into()), Text("Bb".into())]) ; "list_aA_Bb")]
@@ -501,11 +507,15 @@ mod test {
         value()(&mut p).unwrap()
     }
 
-    // #[test_case(r#"[ ]"# => ParseError {input: "foo".into(),location: Location { line: 1, column: 1},err_msg: "expected input: 'false' not found".into()} ; "list_empty")]
-    // fn list_value_err(input: &str) -> ParseError {
-    //     let mut p = Parser::new(input);
-    //     value()(&mut p).err().unwrap()
-    // }
+    #[test_case(r#"[ ]"# => ParseError {input: "[ ]".into(),location: Location { line: 1, column: 2},err_msg: "unexpected char ']' for a valid Value".into()} ; "list_empty")]
+    #[test_case(r#"[ "# => ParseError {input: "[ ".into(),location: Location { line: 1, column: 2},err_msg: "unexpected end".into()} ; "not closing bracket")]
+    #[test_case(r#"[ 1 "# => ParseError {input: "[ 1 ".into(),location: Location { line: 1, column: 4},err_msg: "unexpected end".into()} ; "not closing bracket with value")]
+    #[test_case(r#"[ 1, "# => ParseError {input: "[ 1, ".into(),location: Location { line: 1, column: 5},err_msg: "unexpected end".into()} ; "not closing bracket with value and comma")]
+    #[test_case(r#"[ 1, ]"# => ParseError {input: "[ 1, ]".into(),location: Location { line: 1, column: 5},err_msg: "unexpected char ']' for a valid Value".into()} ; "comma and no value follow")]
+    fn list_value_err(input: &str) -> ParseError {
+        let mut p = Parser::new(input);
+        value()(&mut p).err().unwrap()
+    }
 
     #[test_case("name", "name")]
     #[test_case("name1", "name1")]

@@ -84,6 +84,7 @@ mod test {
     #[test_case("= 8" => false; "eq 8")]
     #[test_case("> 7" => false; "gt 7")]
     #[test_case("< 7" => false; "lt 7")]
+    #[test_case("<7and>6" => false; "lt 7 and gt6")]
     fn query_i32(input: &str) -> bool {
         let exp = parse(input).unwrap();
         (query(exp, &Operators::default()).unwrap())(&7)
