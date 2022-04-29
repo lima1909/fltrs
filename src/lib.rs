@@ -4,7 +4,7 @@
 //! A filter is created based on an input string (query).
 //! This has particular advantages if the filter is created at runtime, i.e. in a GUI or command line tool (CLI).
 //!
-//! ### Example:
+//! ### Examples:
 //! ```
 //! use fltrs::query;
 //!
@@ -19,7 +19,6 @@
 //!
 //! Fltrs supported queries on structs too. This is possible, if the struct implement the trait: [`PathResolver`].
 //!
-//! ### Example:
 //! ```
 //! use fltrs::{PathResolver, Filterable, query};
 //!
@@ -62,7 +61,15 @@
 //! );
 //! ```
 //!
+//! ### Extensions:
 //!
+//! It is possible, to expand the filter/query to your own needs:
+//! - create your own [`mod@crate::operator`]
+//! - create a converter for the filter [`Value`] (e.g.: conversion of units)
+//!
+//! You can find examples on the [`Query`] builder page.
+//!
+
 pub mod error;
 pub mod operator;
 mod parser;
@@ -141,7 +148,7 @@ pub type Predicate<PR> = Box<dyn Fn(&PR) -> bool>;
 /// The `query` function create a [`Predicate`] respectively [`core::ops::Fn`] with which you can
 /// execute a filter on a given slice.
 ///
-/// # Example
+/// ### Example
 /// ```
 /// use fltrs::query;
 ///
@@ -160,11 +167,14 @@ pub fn query<PR: PathResolver + 'static>(query: &str) -> Result<Predicate<PR>> {
 
 /// The Query is an builder to configure the [`query()`]. It is possible, to extend the Operators in the modul: [`mod@crate::operator`].
 ///
-/// # Example
+/// ### Example
+///
+/// Create your own operator:
+///
 /// ```
 /// use fltrs::{value::Value, PathResolver, Predicate, Query, Result, query};
 ///
-/// fn is_upper_eq<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
+/// fn upper_eq<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
 ///     Ok(Box::new(
 ///         move |pr| {
 ///           if let Value::Text(t) = &v {
@@ -176,13 +186,39 @@ pub fn query<PR: PathResolver + 'static>(query: &str) -> Result<Predicate<PR>> {
 /// }
 ///
 /// let query = Query::build()
-///              .operators(&[("isuppereq", is_upper_eq)])
-///              .query(r#" isuppereq "ab" "#)
+///              .operators(&[("uppereq", upper_eq)])
+///              .query(r#" uppereq "ab" "#)
 ///              .unwrap();
 ///
-/// assert_eq!(2, ["yz", "aB", "Ab", "xY"].into_iter().filter(query).count());
+/// let result: Vec<&str> = ["yz", "aB", "Ab", "xY"].into_iter().filter(query).collect();
+///
+/// assert_eq!(vec!["aB", "Ab"], result);
 ///
 /// ```
+///
+/// Create your own `as [convert function]` (for example: conversion of units):
+///
+/// ```
+/// use fltrs::{value::Value, PathResolver, Predicate, Query, Result, query};
+///
+/// let query = Query::build()
+///              .as_value_fn(&[("kbyte", |v| {
+///                     if let Value::Int(x) = v {
+///                         return Value::Int(x * 1024);
+///                     }
+///                     v
+///                   }
+///                 )])
+///              .query(r#" > 1 as kbyte and < 6 as kbyte "#)
+///              .unwrap();
+///
+/// // list of bytes
+/// let result: Vec<i32> = [100, 1025, 7000, 4001].into_iter().filter(query).collect();
+///
+/// assert_eq!(vec![1025, 4001], result);
+///
+/// ```
+
 pub struct Query<PR> {
     ops: Operators<PR>,
     as_value_fn: Vec<(&'static str, AsValueFn)>,
@@ -218,6 +254,7 @@ impl<PR: PathResolver + 'static> Query<PR> {
 mod test {
     use super::*;
 
+    #[derive(PartialEq, Debug)]
     struct Point {
         x: i8,
         y: i16,
@@ -294,49 +331,6 @@ mod test {
             [Point::new(2, 4), Point::new(3, 5), Point::new(4, 6)]
                 .into_iter()
                 .filter(query("x one_of [1, 2, 7, 4]")?)
-                .count()
-        );
-
-        Ok(())
-    }
-
-    fn always_true<PR: PathResolver>(_idx: usize, _v: Value) -> Result<Predicate<PR>> {
-        Ok(Box::new(move |_pr| true))
-    }
-
-    #[test]
-    fn query_builder_op() -> Result<()> {
-        let query = Query::build()
-            .operators(&[("always_true", always_true)])
-            .query("x always_true 5")?;
-
-        assert_eq!(
-            2,
-            [Point::new(2, 4), Point::new(3, 5)]
-                .into_iter()
-                .filter(query)
-                .count()
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn query_builder_as_value_fn() -> Result<()> {
-        let query = Query::build()
-            .as_value_fn(&[("double", |v| {
-                if let Value::Int(x) = v {
-                    return Value::Int(x * 2);
-                }
-                v
-            })])
-            .query("x > 1 as double and  y < 6")?;
-
-        assert_eq!(
-            1,
-            [Point::new(2, 2), Point::new(5, 5)]
-                .into_iter()
-                .filter(query)
                 .count()
         );
 
