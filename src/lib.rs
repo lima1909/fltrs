@@ -1,6 +1,6 @@
 //! # Fltrs
 //!
-//! Fltrs want to support creating easy and fast filters for iterable things (like Vec, Array, Map, Set, ...) in rust.
+//! Fltrs want to support creating easy, fast and expandable filters for iterable things (like Vec, Array, Map, Set, ...) in rust.
 //! A filter is created based on an input string (query).
 //! This has particular advantages if the filter is created at runtime, i.e. in a GUI or command line tool (CLI).
 //!
@@ -158,6 +158,31 @@ pub fn query<PR: PathResolver + 'static>(query: &str) -> Result<Predicate<PR>> {
     crate::query::query(parse(query)?, &Operators::<PR>::default())
 }
 
+/// The Query is an builder to configure the [`query()`]. It is possible, to extend the Operators in the modul: [`mod@crate::operator`].
+///
+/// # Example
+/// ```
+/// use fltrs::{value::Value, PathResolver, Predicate, Query, Result, query};
+///
+/// fn is_upper_eq<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
+///     Ok(Box::new(
+///         move |pr| {
+///           if let Value::Text(t) = &v {
+///               return pr.value(idx).to_string().to_uppercase().eq(&t.to_uppercase());
+///           }
+///           false
+///         }
+///      ))
+/// }
+///
+/// let query = Query::build()
+///              .operators(&[("isuppereq", is_upper_eq)])
+///              .query(r#" isuppereq "ab" "#)
+///              .unwrap();
+///
+/// assert_eq!(2, ["yz", "aB", "Ab", "xY"].into_iter().filter(query).count());
+///
+/// ```
 pub struct Query<PR> {
     ops: Operators<PR>,
     as_value_fn: Vec<(&'static str, AsValueFn)>,
