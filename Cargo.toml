@@ -2,8 +2,13 @@
 name = "fltrs"
 version = "0.1.0"
 edition = "2021"
+authors = ["Mario Linke"]
+description = "Filter for querying lists."
+keywords = ["filter", "query", "gui", "cli"]
+license = "Apache-2.0"
+documentation = "https://docs.rs/fltrs/"
+repository = "https://github.com/lima1909/fltrs"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 regex  = { version = "1.5", optional = true }
