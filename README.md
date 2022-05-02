@@ -1,9 +1,11 @@
-# Fltrs &emsp; [![Build Status](https://github.com/lima1909/fltrs/actions/workflows/continuous_integration.yml/badge.svg)][![Latest Version]][crates.io] 
+[![Build Status]][Build Action] [![Latest Version]][crates.io] 
 
-[Build Status]: https://github.com/lima1909/fltrs/actions
+[Build Status]: https://github.com/lima1909/fltrs/actions/workflows/continuous_integration.yml/badge.svg
+[Build Action]: https://github.com/lima1909/fltrs/actions
 [Latest Version]: https://img.shields.io/crates/v/fltrs.svg
 [crates.io]: https://crates.io/crates/fltrs
 
+# Fltrs
 
 Fltrs want to support creating easy, fast and expandable filters for iterable things (like Vec, Array, Map, Set, ...) in rust. A filter is created based on an input string (query). This has particular advantages if the filter is created at runtime, i.e. in a GUI or command line tool (CLI).
 
