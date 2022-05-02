@@ -11,7 +11,8 @@
 //! | `>`           | greater                           | `> 5`                       |
 //! | `>=`          | greater equal                     | `>= 5`                      |
 //! | `len`         | length of an string               | `name len 5`                |
-//! | `starts_with` | string starts with                | `name starts_with "Pe"`     |
+//! | `contains`    | string contains other string/char | `name contains "Pe"`        |
+//! | `starts_with` | string starts with string/char    | `name starts_with "Pe"`     |
 //! | `one_of`      | one element from given list       | `x one_of [1, 3, 7]`        |
 //! | `regex`       | regexpression (feature = "regex") | `x regex "[0-9]{2}"`        |
 //!
@@ -36,6 +37,7 @@ impl<PR: PathResolver> Default for Operators<PR> {
                 (">=", ge),
                 (">", gt),
                 ("len", len),
+                ("contains", contains),
                 ("starts_with", starts_with),
                 ("one_of", one_of),
                 #[cfg(feature = "regex")]
@@ -87,6 +89,14 @@ fn gt<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
 fn len<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
     Ok(Box::new(move |pr| match v {
         Value::Int(l) => pr.value(idx).to_string().len() == l as usize,
+        _ => false,
+    }))
+}
+
+fn contains<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| match &v {
+        Value::Text(t) => pr.value(idx).to_string().contains(t),
+        Value::Char(c) => pr.value(idx).to_string().contains(*c),
         _ => false,
     }))
 }
@@ -145,6 +155,20 @@ mod test {
         let op = Operators::default();
         let len = op.get("len", 0, Value::Int(4)).unwrap();
         assert!((len)(&"Paul"));
+    }
+
+    #[test]
+    fn exec_contains_str() {
+        let op = Operators::default();
+        let starts_with = op.get("contains", 0, Value::Text("au".into())).unwrap();
+        assert!((starts_with)(&"Paul"));
+    }
+
+    #[test]
+    fn exec_contains_char() {
+        let op = Operators::default();
+        let starts_with = op.get("contains", 0, Value::Char('u')).unwrap();
+        assert!((starts_with)(&"Paul"));
     }
 
     #[test]

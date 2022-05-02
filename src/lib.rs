@@ -56,7 +56,7 @@
 //!       Point { name: "Point_2_6", x: 2, y: 6},
 //!     ]
 //!         .into_iter()
-//!         .filter(query(r#"name starts_with 'P' and x > 1 and y < 5"#).unwrap())
+//!         .filter(query(r#"name contains 'P' and x > 1 and y < 5"#).unwrap())
 //!         .count()
 //! );
 //! ```
