@@ -92,11 +92,10 @@ fn len<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
 }
 
 fn starts_with<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| {
-        if let Value::Text(s) = &v {
-            return pr.value(idx).to_string().starts_with(s);
-        }
-        false
+    Ok(Box::new(move |pr| match &v {
+        Value::Text(t) => pr.value(idx).to_string().starts_with(t),
+        Value::Char(c) => pr.value(idx).to_string().starts_with(*c),
+        _ => false,
     }))
 }
 
@@ -152,6 +151,13 @@ mod test {
     fn exec_starts_with_str() {
         let op = Operators::default();
         let starts_with = op.get("starts_with", 0, Value::Text("Pa".into())).unwrap();
+        assert!((starts_with)(&"Paul"));
+    }
+
+    #[test]
+    fn exec_starts_with_char() {
+        let op = Operators::default();
+        let starts_with = op.get("starts_with", 0, Value::Char('P')).unwrap();
         assert!((starts_with)(&"Paul"));
     }
 
