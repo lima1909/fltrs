@@ -390,13 +390,13 @@ mod test {
     fn iter_str_not_empty() -> Result<()> {
         let result: Vec<&str> = ["", "abc", "", "xyz", ""]
             .into_iter()
-            .filter(query("not(is_empty)")?)
+            .filter(query("not ( is_empty )")?)
             .collect();
         assert_eq!(vec!["abc", "xyz"], result);
 
         let result: Vec<&str> = ["", "abc", "", "xyz", ""]
             .into_iter()
-            .filter(query(r#"not(= "")"#)?)
+            .filter(query(r#"not ( = "")"#)?)
             .collect();
         assert_eq!(vec!["abc", "xyz"], result);
 

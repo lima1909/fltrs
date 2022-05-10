@@ -118,7 +118,7 @@ pub(crate) fn and() -> impl FnMut(&mut Parser) -> Result<()> {
 
 pub(crate) fn filter() -> impl FnMut(&mut Parser) -> Result<Filter> {
     |parser: &mut Parser| {
-        if parser.look_str("not(") {
+        if parser.look_str("not") {
             Ok(not()(parser)?)
         } else if parser.look_str("(") {
             Ok(nested()(parser)?)
@@ -131,6 +131,7 @@ pub(crate) fn filter() -> impl FnMut(&mut Parser) -> Result<Filter> {
 pub(crate) fn not() -> impl FnMut(&mut Parser) -> Result<Filter> {
     |parser: &mut Parser| {
         if parser.take("not") {
+            parser.take_while(is_ws)?;
             let input = parser.take_surround(&'(', &')')?;
             Ok(Filter::Not(parse(&input)?))
         } else {
@@ -580,7 +581,7 @@ mod test {
         assert_eq!(expect, filter()(&mut p).unwrap());
     }
 
-    #[test_case("not is_empty", "not is_empty NULL")]
+    #[test_case("not (is_empty)", "not (is_empty NULL)")]
     #[test_case("=", "= NULL")]
     #[test_case("= true or = false", "= true or = false")]
     #[test_case("= true and != false", "= true and != false")]
@@ -592,24 +593,22 @@ mod test {
     #[test_case("= 1  or =   2 or =   3  and !=  4", "= 1 or = 2 or = 3 and != 4")]
     fn parse_check(input: &str, display: &str) {
         let exp = parse(input).unwrap();
-        assert!(!exp.is_nested());
         assert_eq!(display, format!("{}", exp));
     }
 
-    #[test_case("not(= true)", "not(= true)")]
-    #[test_case("not(= true and != false)", "not(= true and != false)")]
-    #[test_case("not(name = 'X' and name != 'Y')", "not(name = X and name != Y)")]
+    #[test_case("not (= true)", "not (= true)")]
+    #[test_case("not(= true and != false)", "not (= true and != false)")]
+    #[test_case("not(name = 'X' and name != 'Y')", "not (name = X and name != Y)")]
     #[test_case(
         "= false and not(= true or != false)",
-        "= false and not(= true or != false)"
+        "= false and not (= true or != false)"
     )]
     #[test_case(
         "not(= true or != false) and = false",
-        "not(= true or != false) and = false"
+        "not (= true or != false) and = false"
     )]
     fn parse_not_check(input: &str, display: &str) {
         let exp = parse(input).unwrap();
-        assert!(exp.is_nested());
         assert_eq!(display, format!("{}", exp));
     }
 
@@ -617,6 +616,11 @@ mod test {
         "= false and not(= true",
         ParseError {input: "= false and not(= true".into(),location: Location { line: 1, column: 22},err_msg: "missing closing character: ')'".into()} ;
         "missing closing bracket"
+    )]
+    #[test_case(
+        "not",
+        ParseError {input: "not".into(),location: Location { line: 1, column: 3},err_msg: "expected character: '(' not found".into()} ;
+        "only not"
     )]
     fn parse_not_err(input: &str, err: ParseError) {
         assert_eq!(err, parse(input).err().unwrap());
@@ -629,7 +633,6 @@ mod test {
     #[test_case("(= true or != false) and = false", "(= true or != false) and = false")]
     fn parse_nested_check(input: &str, display: &str) {
         let exp = parse(input).unwrap();
-        assert!(exp.is_nested());
         assert_eq!(display, format!("{}", exp));
     }
 
@@ -647,11 +650,13 @@ mod test {
         assert_eq!(err, parse(input).err().unwrap());
     }
 
-    #[test_case("= 1 and (not(= 5) or = 6)", "= 1 and (not(= 5) or = 6)")]
-    #[test_case("= 0 or not(= 1 and (= 5 or = 6))", "= 0 or not(= 1 and (= 5 or = 6))")]
+    #[test_case("= 1 and (not (= 5) or = 6)", "= 1 and (not (= 5) or = 6)")]
+    #[test_case(
+        "= 0 or not (= 1 and (= 5 or = 6))",
+        "= 0 or not (= 1 and (= 5 or = 6))"
+    )]
     fn parse_nested_and_not_check(input: &str, display: &str) {
         let exp = parse(input).unwrap();
-        assert!(exp.is_nested());
         assert_eq!(display, format!("{}", exp));
     }
 

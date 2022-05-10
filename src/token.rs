@@ -6,7 +6,6 @@ use core::fmt::{Debug, Display};
 // TODO: remove 'pub', temporary for benchmarking
 #[derive(PartialEq, PartialOrd, Debug)]
 pub struct Exp {
-    is_nested: bool,
     index: usize,
     pub(crate) ands: Vec<Ands>,
 }
@@ -33,38 +32,21 @@ impl Display for Exp {
 impl Exp {
     pub(crate) fn new(f: Filter) -> Self {
         let mut ors = Self {
-            is_nested: false,
             index: 0,
             ands: vec![],
         };
-        ors.set_nested(&f);
         ors.ands.push(Ands::new(f));
         ors
     }
 
     pub(crate) fn or(&mut self, f: Filter) {
-        self.set_nested(&f);
         self.ands.push(Ands::new(f));
         self.index += 1;
     }
 
     pub(crate) fn and(&mut self, f: Filter) {
-        self.set_nested(&f);
         let and = self.ands.get_mut(self.index).unwrap();
         and.push(f);
-    }
-
-    fn set_nested(&mut self, f: &Filter) {
-        if !self.is_nested {
-            match f {
-                Filter::Nested(_) | Filter::Not(_) => self.is_nested = true,
-                _ => {}
-            }
-        }
-    }
-
-    pub(crate) fn is_nested(&self) -> bool {
-        self.is_nested
     }
 }
 
@@ -112,7 +94,7 @@ impl Display for Filter {
     fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Filter::Predicate(p) => write!(fm, "{}", p),
-            Filter::Not(exp) => write!(fm, "not({})", exp),
+            Filter::Not(exp) => write!(fm, "not ({})", exp),
             Filter::Nested(exp) => write!(fm, "({})", exp),
         }
     }
@@ -130,6 +112,7 @@ impl Display for Predicate {
         if let Some(p) = &self.path {
             write!(fm, "{} ", p)?;
         }
+
         write!(fm, "{} {}", &self.op, &self.value)
     }
 }
