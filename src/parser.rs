@@ -221,9 +221,9 @@ pub(crate) fn value() -> impl FnMut(&mut Parser) -> Result<Value> {
             '-' | '0'..='9' => number()(parser),
             't' => Ok(Bool(map("true")(parser)?)),
             'f' => Ok(Bool(map("false")(parser)?)),
-            _ => Err(parser.parse_err(&format!("unexpected char '{}' for a valid Value", c))),
+            _ => Ok(Null),
         },
-        None => Err(parser.parse_err("unexpected end")),
+        None => Ok(Null),
     }
 }
 
@@ -238,7 +238,9 @@ pub(crate) fn list() -> impl FnMut(&mut Parser) -> Result<Value> {
             if parser.take("]") {
                 break;
             }
-            parser.take(",");
+            if !parser.take(",") {
+                return Err(parser.parse_err("expected comma as delimiter in List-Value"));
+            }
         }
 
         Ok(List(values))
@@ -476,6 +478,8 @@ mod test {
         );
     }
 
+    #[test_case(" ", Null ; "space_NULL")]
+    #[test_case("blub", Null ; "blub_NULL")]
     #[test_case("240", Int(240) ; "240")]
     #[test_case("true", Bool(true) ; "true_val")]
     #[test_case("false", Bool(false) ; "false_val")]
@@ -487,7 +491,6 @@ mod test {
     }
 
     #[test_case("foo", ParseError {input: "foo".into(),location: Location { line: 1, column: 1},err_msg: "expected input: 'false' not found".into()} ; "foo not false")]
-    #[test_case("bar", ParseError {input: "bar".into(),location: Location { line: 1, column: 1},err_msg: "unexpected char 'b' for a valid Value".into()} ; "bar not bool")]
     #[test_case(r#""bar"#, ParseError {input: r#""bar"#.into(),location: Location { line: 1, column: 4},err_msg: "missing closing character: '\"'".into()} ; "string not closing bracket")]
     #[test_case(r#"'bar'"#, ParseError {input: r#"'bar'"#.into(),location: Location { line: 1, column: 5},err_msg: "expected char len is 1 not 3".into()} ; "char to long")]
     fn value_err(input: &str, err: ParseError) {
@@ -502,16 +505,18 @@ mod test {
     #[test_case(r#"[1, 2, 5]"# => List(vec![Int(1), Int(2), Int(5)]) ; "list_1_2_5")]
     #[test_case(r#"[1, 'A', true]"# => List(vec![Int(1), Char('A'), Bool(true)]) ; "list_1_A_true")]
     #[test_case(r#"["aA", "Bb"]"# => List(vec![Text("aA".into()), Text("Bb".into())]) ; "list_aA_Bb")]
+    #[test_case(r#"[ ]"# => List(vec![Null]) ; "list_empty_NULL")]
+    #[test_case(r#"[ , ]"# => List(vec![Null, Null]) ; "list_empty_NULL_NULL")]
+    #[test_case(r#"[ 1, ]"# => List(vec![Int(1), Null]) ; "list_1_empty_NULL")]
+    #[test_case(r#"[ , 1 ]"# => List(vec![Null, Int(1)]) ; "list_empty_NULL_1")]
     fn list_value_check(input: &str) -> Value {
         let mut p = Parser::new(input);
         value()(&mut p).unwrap()
     }
 
-    #[test_case(r#"[ ]"# => ParseError {input: "[ ]".into(),location: Location { line: 1, column: 2},err_msg: "unexpected char ']' for a valid Value".into()} ; "list_empty")]
-    #[test_case(r#"[ "# => ParseError {input: "[ ".into(),location: Location { line: 1, column: 2},err_msg: "unexpected end".into()} ; "not closing bracket")]
-    #[test_case(r#"[ 1 "# => ParseError {input: "[ 1 ".into(),location: Location { line: 1, column: 4},err_msg: "unexpected end".into()} ; "not closing bracket with value")]
-    #[test_case(r#"[ 1, "# => ParseError {input: "[ 1, ".into(),location: Location { line: 1, column: 5},err_msg: "unexpected end".into()} ; "not closing bracket with value and comma")]
-    #[test_case(r#"[ 1, ]"# => ParseError {input: "[ 1, ]".into(),location: Location { line: 1, column: 5},err_msg: "unexpected char ']' for a valid Value".into()} ; "comma and no value follow")]
+    #[test_case(r#"[ "# => ParseError {input: "[ ".into(),location: Location { line: 1, column: 2},err_msg: "expected comma as delimiter in List-Value".into()} ; "not closing bracket")]
+    #[test_case(r#"[ 1 "# => ParseError {input: "[ 1 ".into(),location: Location { line: 1, column: 4},err_msg: "expected comma as delimiter in List-Value".into()} ; "not closing bracket with value")]
+    #[test_case(r#"[ 1, "# => ParseError {input: "[ 1, ".into(),location: Location { line: 1, column: 5},err_msg: "expected comma as delimiter in List-Value".into()} ; "not closing bracket with value and comma")]
     fn list_value_err(input: &str) -> ParseError {
         let mut p = Parser::new(input);
         value()(&mut p).err().unwrap()
@@ -552,6 +557,10 @@ mod test {
     #[test_case("= 7", Predicate{path: None, op: String::from("="), value: Int(7)}; "eq 7")]
     #[test_case("name len 3", Predicate{path: Some(String::from("name")), op: String::from("len"), value: Int(3)}; "name len 3")]
     #[test_case("name len3", Predicate{path: Some(String::from("name")), op: String::from("len"), value: Int(3)}; "name len3")]
+    #[test_case("is_empty", Predicate{path: None, op: String::from("is_empty"), value: Null}; "is_empty")]
+    #[test_case("name is_empty", Predicate{path: Some(String::from("name")), op: String::from("is_empty"), value: Null}; "name is_empty")]
+    #[test_case("=", Predicate{path: None, op: String::from("="), value: Null}; "eq empty")]
+    #[test_case("= ", Predicate{path: None, op: String::from("="), value: Null}; "eq empty space")]
     fn predicate_check(input: &str, expect: Predicate) {
         let mut p = Parser::new(input);
         assert_eq!(expect, predicate()(&mut p).unwrap());
@@ -571,6 +580,8 @@ mod test {
         assert_eq!(expect, filter()(&mut p).unwrap());
     }
 
+    #[test_case("not is_empty", "not is_empty NULL")]
+    #[test_case("=", "= NULL")]
     #[test_case("= true or = false", "= true or = false")]
     #[test_case("= true and != false", "= true and != false")]
     #[test_case("name = 'X' and name != 'Y'", "name = X and name != Y")]
@@ -646,7 +657,6 @@ mod test {
 
     #[test_case("= true o", ParseError {input: "= true o".into(),location: Location { line: 1, column: 7},err_msg: "expected key word 'or' or 'and'".into()}; "eq true o")]
     #[test_case("= tru", ParseError {input: "= tru".into(),location: Location { line: 1, column: 2},err_msg: "expected input: 'true' not found".into()} ; "eq tru")]
-    #[test_case("= ", ParseError {input: "= ".into(),location: Location { line: 1, column: 2},err_msg: "unexpected end".into()}; "eq ")]
     fn parse_err(input: &str, err: ParseError) {
         assert_eq!(err, parse(input).err().unwrap());
     }

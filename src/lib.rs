@@ -85,7 +85,7 @@
 //!       Point { name: "Point_2_6", x: 2, y: 6},
 //!     ]
 //!         .into_iter()
-//!         .filter(query(r#"name contains "oin" and x one_of [0, 3, 7]"#).unwrap())
+//!         .filter(query(r#"name contains "oi" and x one_of [3, 7]"#).unwrap())
 //!         .count()
 //! );
 //! ```
@@ -275,6 +275,17 @@ impl<PR: PathResolver + 'static> Query<PR> {
 mod test {
     use super::*;
 
+    #[test]
+    fn iter_char_space() -> Result<()> {
+        let result: Vec<char> = [' ', 'a', ' ', 'b', ' ']
+            .into_iter()
+            .filter(query(r#"= ' '"#)?)
+            .collect();
+        assert_eq!(vec![' ', ' ', ' '], result);
+
+        Ok(())
+    }
+
     #[derive(PartialEq, Debug)]
     struct Point {
         x: i8,
@@ -354,6 +365,51 @@ mod test {
                 .filter(query("x one_of [1, 2, 7, 4]")?)
                 .count()
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn iter_str_empty() -> Result<()> {
+        let result: Vec<&str> = ["", "abc", "", "xyz", ""]
+            .into_iter()
+            .filter(query("is_empty")?)
+            .collect();
+        assert_eq!(vec!["", "", ""], result);
+
+        let result: Vec<&str> = ["", "abc", "", "xyz", ""]
+            .into_iter()
+            .filter(query(r#"= """#)?)
+            .collect();
+        assert_eq!(vec!["", "", ""], result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn iter_str_not_empty() -> Result<()> {
+        let result: Vec<&str> = ["", "abc", "", "xyz", ""]
+            .into_iter()
+            .filter(query("not(is_empty)")?)
+            .collect();
+        assert_eq!(vec!["abc", "xyz"], result);
+
+        let result: Vec<&str> = ["", "abc", "", "xyz", ""]
+            .into_iter()
+            .filter(query(r#"not(= "")"#)?)
+            .collect();
+        assert_eq!(vec!["abc", "xyz"], result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn iter_str_one_of_empty() -> Result<()> {
+        let result: Vec<&str> = ["", "abc", "", "xyz", ""]
+            .into_iter()
+            .filter(query(r#"one_of [""]"#)?)
+            .collect();
+        assert_eq!(vec!["", "", ""], result);
 
         Ok(())
     }

@@ -4,6 +4,7 @@ use core::str::FromStr;
 
 #[derive(PartialEq, PartialOrd, Debug)]
 pub enum Value {
+    Null,
     Bool(bool),
     Int(i32),
     Float(f64),
@@ -15,6 +16,7 @@ pub enum Value {
 impl Display for Value {
     fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Value::Null => write!(fm, "NULL"),
             Value::Bool(v) => write!(fm, "{}", v),
             Value::Int(v) => write!(fm, "{}", v),
             Value::Float(v) => write!(fm, "{}", v),

@@ -2,19 +2,20 @@
 //!
 //! ### Overview:
 //!
-//! | operator      | meaning                           | example                     |
-//! |---------------|---------------------------------- |---------------------------- |
-//! | `=` or `==`   | equal                             | `= 5` or `name = "Peter"`   |
-//! | `!=`          | not equal                         | `!= 5` or `name != "Peter"` |
-//! | `<`           | less                              | `< 5`                       |
-//! | `<=`          | less equal                        | `<= 5`                      |
-//! | `>`           | greater                           | `> 5`                       |
-//! | `>=`          | greater equal                     | `>= 5`                      |
-//! | `len`         | length of an string               | `name len 5`                |
-//! | `contains`    | string contains other string/char | `name contains "Pe"`        |
-//! | `starts_with` | string starts with string/char    | `name starts_with "Pe"`     |
-//! | `one_of`      | one element from given list       | `x one_of [1, 3, 7]`        |
-//! | `regex`       | regexpression (feature = "regex") | `x regex "[0-9]{2}"`        |
+//! | operator      | meaning                           | example                        |
+//! |---------------|---------------------------------- |------------------------------- |
+//! | `=` or `==`   | equal                             | `= 5` or `name = "Peter"`      |
+//! | `!=`          | not equal                         | `!= 5` or `name != "Peter"`    |
+//! | `<`           | less                              | `< 5`                          |
+//! | `<=`          | less equal                        | `<= 5`                         |
+//! | `>`           | greater                           | `> 5`                          |
+//! | `>=`          | greater equal                     | `>= 5`                         |
+//! | `len`         | length of an string               | `name len 5`                   |
+//! | `is_empty`    | string is empty                   | `name is_empty` or `name = ""` |
+//! | `contains`    | string contains other string/char | `name contains "Pe"`           |
+//! | `starts_with` | string starts with string/char    | `name starts_with "Pe"`        |
+//! | `one_of`      | one element from given list       | `x one_of [1, 3, 7]`           |
+//! | `regex`       | regexpression (feature = "regex") | `x regex "[0-9]{2}"`           |
 //!
 use crate::value::Value;
 use crate::{FltrError, PathResolver, Predicate, Result};
@@ -37,6 +38,7 @@ impl<PR: PathResolver> Default for Operators<PR> {
                 (">=", ge),
                 (">", gt),
                 ("len", len),
+                ("is_empty", is_empty),
                 ("contains", contains),
                 ("starts_with", starts_with),
                 ("one_of", one_of),
@@ -89,6 +91,13 @@ fn gt<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
 fn len<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
     Ok(Box::new(move |pr| match v {
         Value::Int(l) => pr.value(idx).to_string().len() == l as usize,
+        _ => false,
+    }))
+}
+
+fn is_empty<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| match &v {
+        Value::Null => pr.value(idx).to_string().is_empty(),
         _ => false,
     }))
 }
