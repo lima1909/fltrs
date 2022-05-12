@@ -22,13 +22,31 @@ impl<'a> Scanner<'a> {
     }
 
     /// read the current char, without changing the pointer
-    pub(crate) fn look(&self) -> Option<&char> {
-        self.inner.get(self.ptr)
+    pub(crate) fn look(&self) -> Option<char> {
+        if let Some(c) = self.inner.get(self.ptr) {
+            return Some(c.to_ascii_lowercase());
+        }
+        None
     }
 
     /// if the input is find, then get true (wihtout inc the pointer)
     pub(crate) fn look_str(&mut self, input: &str) -> bool {
-        self.it().take(input.len()).copied().eq(input.chars())
+        let l = self.ptr + input.len();
+        if l > self.inner.len() {
+            return false;
+        }
+
+        let self_chars = &self.inner[self.ptr..l];
+        let mut input_chars = input.chars();
+
+        for c in self_chars {
+            let x = input_chars.next().unwrap();
+            if !c.eq_ignore_ascii_case(&x) {
+                return false;
+            }
+        }
+
+        true
     }
 
     /// look all chars for the given function: `f` gets true (wihtout inc the pointer)
@@ -90,7 +108,7 @@ impl<'a> Scanner<'a> {
     /// take a string between a char like quote: "abx" -> abx
     pub(crate) fn take_surround(&mut self, begin: &char, end: &char) -> Result<String> {
         match self.look() {
-            Some(got) if got == begin => {
+            Some(got) if &got == begin => {
                 self.ptr += 1; // bypass the begin char
 
                 let mut count = 0;
@@ -168,10 +186,11 @@ mod test {
 
     #[test_case("foo",  'f', 0  ; "look on first char: f")]
     #[test_case("foo",  'o', 2  ; "look second first char: o")]
+    #[test_case("bAr",  'a', 1  ; "bAr: upper A")]
     fn look(input: &str, c: char, p: usize) {
         let mut s = Scanner::new(input);
         s.ptr = p;
-        assert_eq!(&c, s.look().unwrap());
+        assert_eq!(c, s.look().unwrap());
     }
 
     #[test_case("", 0  ; "look with empty input")]
@@ -182,22 +201,28 @@ mod test {
         assert!(s.look().is_none());
     }
 
-    #[test_case("foo", 0, "fo", true  ; "look_str on po 0")]
-    #[test_case("foo",  0, "oo" ,false ; "look_str on po 0, bad str")]
-    #[test_case("foo",  1, "oo" ,true ; "look_str on po 1")]
-    fn look_str(input: &str, p: usize, look_str: &str, expect: bool) {
+    #[test_case("foo", 0, "fo" => true  ; "look_str on pos 0")]
+    #[test_case("foo",  0, "oo" => false ; "look_str on pos 0, bad str")]
+    #[test_case("foo",  1, "oo" => true ; "look_str on pos 1")]
+    #[test_case("foo",  1, "oO" => true ; "look_str on pos 1 upper_2")]
+    #[test_case("foo",  1, "Oo" => true ; "look_str on pos 1 upper_1")]
+    #[test_case("foo",  1, "OO" => true ; "look_str on pos 1 upper_both")]
+    #[test_case("foo",  4, "oo" => false ; "look oo after pos 2")]
+    fn look_str(input: &str, p: usize, look_str: &str) -> bool {
         let mut s = Scanner::new(input);
         s.ptr = p;
-        assert_eq!(expect, s.look_str(look_str));
+        s.look_str(look_str)
     }
 
-    #[test_case("foo", 0, "fo", true  ; "take_str on po 0")]
-    #[test_case("foo",  0, "oo" ,false ; "take_str on po 0, bad str")]
-    #[test_case("foo",  1, "oo" ,true ; "take_str on po 1")]
-    fn take(input: &str, p: usize, take_str: &str, expect: bool) {
+    #[test_case("foo", 0, "fo" => true  ; "take_str on pos 0")]
+    #[test_case("Foo", 0, "Fo" => true  ; "take_str on pos 0 upper F")]
+    #[test_case("foo",  0, "oo" => false ; "take_str on pos 0, bad str")]
+    #[test_case("foo",  1, "oo" => true ; "take_str on pos 1")]
+    #[test_case("foo",  1, "Oo" => true ; "take_str on pos 1 upper O")]
+    fn take(input: &str, p: usize, take_str: &str) -> bool {
         let mut s = Scanner::new(input);
         s.ptr = p;
-        assert_eq!(expect, s.look_str(take_str));
+        s.look_str(take_str)
     }
 
     #[test]
