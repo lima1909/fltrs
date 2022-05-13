@@ -8,6 +8,11 @@ use std::{
     str::FromStr,
 };
 
+const KW_AS: &str = "as";
+const KW_OR: &str = "or";
+const KW_AND: &str = "and";
+const KW_NOT: &str = "not";
+
 pub type AsValueFn = fn(val: Value) -> Value;
 
 pub(crate) struct Parser<'a> {
@@ -32,9 +37,9 @@ impl<'a> Parser<'a> {
         self.exp = Some(Exp::new(f));
 
         loop {
-            if self.s.look_str("or") {
+            if self.s.look_str(KW_OR) {
                 iws(&mut self, or())?;
-            } else if self.s.look_str("and") {
+            } else if self.s.look_str(KW_AND) {
                 iws(&mut self, and())?;
             } else {
                 let _ = self.take_while(is_ws);
@@ -93,7 +98,7 @@ pub fn parse(input: &str) -> Result<Exp> {
 pub(crate) fn or() -> impl FnMut(&mut Parser) -> Result<()> {
     |parser: &mut Parser| {
         loop {
-            if !parser.take("or") {
+            if !parser.take(KW_OR) {
                 break;
             }
             let f = iws(parser, filter())?;
@@ -106,7 +111,7 @@ pub(crate) fn or() -> impl FnMut(&mut Parser) -> Result<()> {
 pub(crate) fn and() -> impl FnMut(&mut Parser) -> Result<()> {
     |parser: &mut Parser| {
         loop {
-            if !parser.take("and") {
+            if !parser.take(KW_AND) {
                 break;
             }
             let f = iws(parser, filter())?;
@@ -118,7 +123,7 @@ pub(crate) fn and() -> impl FnMut(&mut Parser) -> Result<()> {
 
 pub(crate) fn filter() -> impl FnMut(&mut Parser) -> Result<Filter> {
     |parser: &mut Parser| {
-        if parser.look_str("not") {
+        if parser.look_str(KW_NOT) {
             Ok(not()(parser)?)
         } else if parser.look_str("(") {
             Ok(nested()(parser)?)
@@ -130,7 +135,7 @@ pub(crate) fn filter() -> impl FnMut(&mut Parser) -> Result<Filter> {
 
 pub(crate) fn not() -> impl FnMut(&mut Parser) -> Result<Filter> {
     |parser: &mut Parser| {
-        if parser.take("not") {
+        if parser.take(KW_NOT) {
             parser.take_while(is_ws)?;
             let input = parser.take_surround(&'(', &')')?;
             Ok(Filter::Not(parse(&input)?))
@@ -304,7 +309,7 @@ pub(crate) fn is_number(pos: usize, c: &char) -> core::result::Result<bool, &str
 #[inline]
 pub(crate) fn with_as() -> impl FnMut(&mut Parser) -> Result<String> {
     |parser: &mut Parser| {
-        if parser.take("as") {
+        if parser.take(KW_AS) {
             let _ = parser.take_while(is_ws);
             parser.take_while(is_not_ws)
         } else {
@@ -366,11 +371,11 @@ mod test {
         assert_eq!(None, p.starts_with_valid_op("foo"));
     }
 
-    #[test_case("true", "true", true; "_true")]
-    #[test_case("false xyz", "false", false ; "_false")]
-    fn map_bool(input: &str, take_input: &str, expect: bool) {
+    #[test_case("true", "true" => true; "_true")]
+    #[test_case("false xyz", "false" => false ; "_false")]
+    fn map_bool(input: &str, take_input: &str) -> bool {
         let mut p = Parser::new(input);
-        assert_eq!(expect, map::<bool>(take_input)(&mut p).unwrap());
+        map::<bool>(take_input)(&mut p).unwrap()
     }
 
     #[test_case(" true", "true", true; "_true")]
@@ -429,6 +434,9 @@ mod test {
     #[test_case("as f64", "f64")]
     #[test_case("as usize", "usize")]
     #[test_case("as foo", "foo")]
+    #[test_case("AS x", "x")]
+    #[test_case("As y", "y")]
+    #[test_case("aS z", "z")]
     #[test_case("foo", "")]
     #[test_case("as ", "")]
     #[test_case(" ", "" ; "space")]
@@ -463,7 +471,7 @@ mod test {
 
     #[test_case(r#""yeh""#, |v: Value| -> Value { str_to_number(&v.to_string()).unwrap() }=>Value::Text("yeh".into()) ; "no as value")]
     #[test_case(r#""123" as to_val"#, |v: Value| -> Value { str_to_number(&v.to_string()).unwrap() } => Value::Int(123) ; "text as Int32")]
-    #[test_case(r#"123 as to_val"#, |v: Value| -> Value { if let Value::Int(i) = v { Value::Int(i * 2) } else { Value::Int(0) } } => Value::Int(246) ; "double 123")]
+    #[test_case(r#"123 AS to_val"#, |v: Value| -> Value { if let Value::Int(i) = v { Value::Int(i * 2) } else { Value::Int(0) } } => Value::Int(246) ; "double 123")]
     fn value_with_as_check(input: &str, as_val_fn: AsValueFn) -> Value {
         let mut p = Parser::new(input);
         p.add_fn("to_val", as_val_fn);
@@ -496,6 +504,10 @@ mod test {
     }
 
     #[test_case(" ", Null ; "space_NULL")]
+    #[test_case("null", Null ; "null")]
+    #[test_case("none", Null ; "none")]
+    #[test_case("NULL", Null ; "upper null")]
+    #[test_case("NONE", Null ; "upper NONE")]
     #[test_case("blub", Null ; "blub_NULL")]
     #[test_case("240", Int(240) ; "240")]
     #[test_case("true", Bool(true) ; "true_val")]
@@ -613,8 +625,9 @@ mod test {
     }
 
     #[test_case("not (= true)", "not (= true)")]
+    #[test_case("NOt (= false)", "not (= false)")]
     #[test_case("not(= true and != false)", "not (= true and != false)")]
-    #[test_case("not(name = 'X' and name != 'Y')", "not (name = X and name != Y)")]
+    #[test_case("noT(name = 'X' and name != 'Y')", "not (name = X and name != Y)")]
     #[test_case(
         "= false and not(= true or != false)",
         "= false and not (= true or != false)"
