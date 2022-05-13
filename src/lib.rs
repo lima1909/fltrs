@@ -11,6 +11,7 @@
 //! - create a converter for the filter [`Value`] (e.g.: conversion of units). You can find examples on the [`Query`] builder page.
 //!
 //! # Examples:
+//!
 //! ```
 //! use fltrs::query;
 //!
@@ -22,8 +23,20 @@
 //! assert_eq!(vec![3, 2, 4, 4, 3], result);
 //! ```
 //!
+//! ### Option queries:
 //!
-//! ### Nested queries are support too:
+//! ```
+//! use fltrs::query;
+//!
+//! let result: Vec<Option<char>> = [None, Some('a'), None, Some('b'), Some('c'), Some('a')]
+//!         .into_iter()
+//!         .filter(query(" != 'a' and not ( = none) ").unwrap())
+//!         .collect();
+//!
+//! assert_eq!(vec![Some('b'), Some('c')], result);
+//! ```
+//!
+//! ### Nested and Not queries:
 //!
 //! ```
 //! use fltrs::query;
@@ -107,6 +120,8 @@ use crate::value::Value;
 /// The default [`core::result::Result`] with the error: [`FltrError`].
 pub type Result<T> = core::result::Result<T, FltrError>;
 
+/// Is a replacement for the [`std::fmt::Display`] trait.
+/// It is not possible to implement `Display` for the enum [`std::option::Option`].
 pub trait AsString {
     fn as_string(&self) -> String;
 }
@@ -318,8 +333,10 @@ mod test {
     #[test_case(" one_of [1, 2] " => vec![Some(1), Some(2)] ; "one_of 1 2" )]
     #[test_case(" one_of [1, none] " => vec![None, Some(1), None, None] ; "one_of 1 none" )]
     #[test_case(" = " => vec![None, None, None] ; "eq" )]
-    #[test_case(" = none" => vec![None, None, None] ; "eq None" )]
-    #[test_case(" = null" => vec![None, None, None] ; "eq Null" )]
+    #[test_case(" = none" => vec![None, None, None] ; "eq none" )]
+    #[test_case(" = None" => vec![None, None, None] ; "eq upper None" )]
+    #[test_case(" = null" => vec![None, None, None] ; "eq null" )]
+    #[test_case(" = Null" => vec![None, None, None] ; "eq upper Null" )]
     #[test_case(" is_empty " => vec![None, None, None] ; "is_empty")]
     #[test_case(" not (is_empty) " => vec![Some(1), Some(2), Some(3)] ; "not is_empty" )]
     fn iter_option(query_str: &str) -> Vec<Option<i32>> {

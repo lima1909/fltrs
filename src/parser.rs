@@ -12,6 +12,8 @@ const KW_AS: &str = "as";
 const KW_OR: &str = "or";
 const KW_AND: &str = "and";
 const KW_NOT: &str = "not";
+const KW_NULL_NONE: &str = "none";
+const KW_NULL_NULL: &str = "null";
 
 pub type AsValueFn = fn(val: Value) -> Value;
 
@@ -237,14 +239,14 @@ pub(crate) fn value() -> impl FnMut(&mut Parser) -> Result<Value> {
 #[inline]
 pub(crate) fn null() -> impl FnMut(&mut Parser) -> Result<Value> {
     |parser: &mut Parser| {
-        if parser.look_str("none") {
-            parser.take("none");
+        if parser.look_str(KW_NULL_NONE) {
+            parser.take(KW_NULL_NONE);
             Ok(Null)
-        } else if parser.look_str("null") {
-            parser.take("null");
+        } else if parser.look_str(KW_NULL_NULL) {
+            parser.take(KW_NULL_NULL);
             Ok(Null)
         } else {
-            Err(parser.parse_err("not a valid Value::Null keyword"))
+            Err(parser.parse_err("not a valid 'Null' keyword (none, null)"))
         }
     }
 }
