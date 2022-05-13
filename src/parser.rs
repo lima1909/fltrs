@@ -222,9 +222,25 @@ pub(crate) fn value() -> impl FnMut(&mut Parser) -> Result<Value> {
             '-' | '0'..='9' => number()(parser),
             't' => Ok(Bool(map("true")(parser)?)),
             'f' => Ok(Bool(map("false")(parser)?)),
+            'n' => null()(parser),
             _ => Ok(Null),
         },
         None => Ok(Null),
+    }
+}
+
+#[inline]
+pub(crate) fn null() -> impl FnMut(&mut Parser) -> Result<Value> {
+    |parser: &mut Parser| {
+        if parser.look_str("none") {
+            parser.take("none");
+            Ok(Null)
+        } else if parser.look_str("null") {
+            parser.take("null");
+            Ok(Null)
+        } else {
+            Err(parser.parse_err("not a valid Value::Null keyword"))
+        }
     }
 }
 

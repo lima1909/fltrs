@@ -117,6 +117,33 @@ impl PartialOrd<Value> for f32 {
     }
 }
 
+impl<V> PartialEq<Value> for Option<V>
+where
+    V: PartialEq<Value>,
+{
+    #[inline]
+    fn eq(&self, other: &Value) -> bool {
+        match self {
+            Some(v) => v.eq(other),
+            None if &Value::Null == other => true,
+            _ => false,
+        }
+    }
+}
+
+impl<V> PartialOrd<Value> for Option<V>
+where
+    V: PartialOrd<Value>,
+{
+    #[inline]
+    fn partial_cmp(&self, other: &Value) -> Option<::core::cmp::Ordering> {
+        match self {
+            Some(v) => v.partial_cmp(other),
+            None => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

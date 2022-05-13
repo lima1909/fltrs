@@ -104,15 +104,42 @@ use crate::operator::{OperatorFn, Operators};
 use crate::parser::{parse, AsValueFn, Parser};
 use crate::value::Value;
 
-use core::fmt::Display;
-
 /// The default [`core::result::Result`] with the error: [`FltrError`].
 pub type Result<T> = core::result::Result<T, FltrError>;
 
-/// Filterable means, the given value can be compared to [`Value`] and implement the trait [`core::fmt::Display`].
-pub trait Filterable: PartialEq<Value> + PartialOrd<Value> + Display {}
+pub trait AsString {
+    fn as_string(&self) -> String;
+}
 
-impl<V: PartialEq<Value> + PartialOrd<Value> + Display> Filterable for V {}
+macro_rules! as_string {
+    ( $($t:ty) + ) => {
+    $(
+        impl AsString for $t {
+            fn as_string(&self) -> String {
+                self.to_string()
+            }
+        }
+
+        impl AsString for Option<$t> {
+            fn as_string(&self) -> String {
+                match self {
+                    Some(v) => v.to_string(),
+                    None => String::new(),
+                }
+            }
+        }
+
+    ) *
+
+    }
+}
+
+as_string! { bool char &str String usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 f32 f64 }
+
+/// Filterable means, the given value can be compared to [`Value`] and implement the trait [`core::fmt::Display`].
+pub trait Filterable: PartialEq<Value> + PartialOrd<Value> + AsString {}
+
+impl<V: PartialEq<Value> + PartialOrd<Value> + AsString> Filterable for V {}
 
 /// PathResolver is a possibility to get the value from a field of an given struct.
 ///
@@ -199,7 +226,7 @@ pub fn query<PR: PathResolver + 'static>(query: &str) -> Result<Predicate<PR>> {
 ///     Ok(Box::new(
 ///         move |pr| {
 ///           if let Value::Text(t) = &v {
-///               return pr.value(idx).to_string().to_uppercase().eq(&t.to_uppercase());
+///               return pr.value(idx).as_string().to_uppercase().eq(&t.to_uppercase());
 ///           }
 ///           false
 ///         }
@@ -274,6 +301,7 @@ impl<PR: PathResolver + 'static> Query<PR> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use test_case::test_case;
 
     #[test]
     fn iter_char_space() -> Result<()> {
@@ -284,6 +312,22 @@ mod test {
         assert_eq!(vec![' ', ' ', ' '], result);
 
         Ok(())
+    }
+
+    #[test_case(" > 1 " => vec![Some(2), Some(3)] ; "> 1" )]
+    #[test_case(" one_of [1, 2] " => vec![Some(1), Some(2)] ; "one_of 1 2" )]
+    #[test_case(" one_of [1, none] " => vec![None, Some(1), None, None] ; "one_of 1 none" )]
+    #[test_case(" = " => vec![None, None, None] ; "eq" )]
+    #[test_case(" = none" => vec![None, None, None] ; "eq None" )]
+    #[test_case(" = null" => vec![None, None, None] ; "eq Null" )]
+    #[test_case(" is_empty " => vec![None, None, None] ; "is_empty")]
+    #[test_case(" not (is_empty) " => vec![Some(1), Some(2), Some(3)] ; "not is_empty" )]
+    fn iter_option(query_str: &str) -> Vec<Option<i32>> {
+        let result: Vec<Option<i32>> = [None, Some(1), None, Some(2), Some(3), None]
+            .into_iter()
+            .filter(query(query_str).unwrap())
+            .collect();
+        result
     }
 
     #[derive(PartialEq, Debug)]

@@ -90,30 +90,30 @@ fn gt<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
 
 fn len<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
     Ok(Box::new(move |pr| match v {
-        Value::Int(l) => pr.value(idx).to_string().len() == l as usize,
+        Value::Int(l) => pr.value(idx).as_string().len() == l as usize,
         _ => false,
     }))
 }
 
 fn is_empty<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
     Ok(Box::new(move |pr| match &v {
-        Value::Null => pr.value(idx).to_string().is_empty(),
+        Value::Null => pr.value(idx).as_string().is_empty(),
         _ => false,
     }))
 }
 
 fn contains<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
     Ok(Box::new(move |pr| match &v {
-        Value::Text(t) => pr.value(idx).to_string().contains(t),
-        Value::Char(c) => pr.value(idx).to_string().contains(*c),
+        Value::Text(t) => pr.value(idx).as_string().contains(t),
+        Value::Char(c) => pr.value(idx).as_string().contains(*c),
         _ => false,
     }))
 }
 
 fn starts_with<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
     Ok(Box::new(move |pr| match &v {
-        Value::Text(t) => pr.value(idx).to_string().starts_with(t),
-        Value::Char(c) => pr.value(idx).to_string().starts_with(*c),
+        Value::Text(t) => pr.value(idx).as_string().starts_with(t),
+        Value::Char(c) => pr.value(idx).as_string().starts_with(*c),
         _ => false,
     }))
 }
@@ -130,7 +130,7 @@ fn one_of<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
 #[cfg(feature = "regex")]
 fn regex<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
     let rg = regex::Regex::new(&v.to_string()).or_else(|e| Err(FltrError(e.to_string())))?;
-    Ok(Box::new(move |pr| rg.is_match(&pr.value(idx).to_string())))
+    Ok(Box::new(move |pr| rg.is_match(&pr.value(idx).as_string())))
 }
 
 #[cfg(test)]
