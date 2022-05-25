@@ -139,8 +139,13 @@ pub(crate) fn not() -> impl FnMut(&mut Parser) -> Result<Filter> {
     |parser: &mut Parser| {
         if parser.take(KW_NOT) {
             parser.take_while(is_ws)?;
-            let input = parser.take_surround(&'(', &')')?;
-            Ok(Filter::Not(parse(&input)?))
+            if parser.look_str("(") {
+                let input = parser.take_surround(&'(', &')')?;
+                Ok(Filter::Not(parse(&input)?))
+            } else {
+                let p = predicate()(parser)?;
+                Ok(Filter::Not(Exp::new(Filter::Predicate(p))))
+            }
         } else {
             Err(parser.parse_err("expeted key word 'not'"))
         }
@@ -180,7 +185,7 @@ pub(crate) fn op() -> impl FnMut(&mut Parser) -> Result<String> {
         let op_str = parser.s.look_while(is_not_ws)?;
         if let Some(op) = parser.starts_with_valid_op(&op_str) {
             parser.s.take(&op);
-            return Ok(op.to_string());
+            return Ok(op);
         }
         Err(parser.parse_err(&format!("'{op_str}' is not a valid filter operation")))
     }
@@ -626,6 +631,7 @@ mod test {
         assert_eq!(display, format!("{}", exp));
     }
 
+    #[test_case("not = 5", "not (= 5)")]
     #[test_case("not (= true)", "not (= true)")]
     #[test_case("NOt (= false)", "not (= false)")]
     #[test_case("not(= true and != false)", "not (= true and != false)")]
@@ -650,8 +656,18 @@ mod test {
     )]
     #[test_case(
         "not",
-        ParseError {input: "not".into(),location: Location { line: 1, column: 3},err_msg: "expected character: '(' not found".into()} ;
+        ParseError {input: "not".into(),location: Location { line: 1, column: 3},err_msg: "'' is not a valid filter operation".into()} ;
         "only not"
+    )]
+    #[test_case(
+        "not name",
+        ParseError {input: "not name".into(),location: Location { line: 1, column: 8},err_msg: "'' is not a valid filter operation".into()} ;
+        "not name"
+    )]
+    #[test_case(
+        "not name op",
+        ParseError {input: "not name op".into(),location: Location { line: 1, column: 9},err_msg: "'op' is not a valid filter operation".into()} ;
+        "not name op"
     )]
     fn parse_not_err(input: &str, err: ParseError) {
         assert_eq!(err, parse(input).err().unwrap());

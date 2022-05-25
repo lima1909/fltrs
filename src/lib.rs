@@ -30,7 +30,7 @@
 //!
 //! let result: Vec<Option<char>> = [None, Some('a'), None, Some('b'), Some('c'), Some('a')]
 //!         .into_iter()
-//!         .filter(query(" != 'a' and not ( = none) ").unwrap())
+//!         .filter(query(" != 'a' and not = none ").unwrap())
 //!         .collect();
 //!
 //! assert_eq!(vec![Some('b'), Some('c')], result);
@@ -338,7 +338,8 @@ mod test {
     #[test_case(" = null" => vec![None, None, None] ; "eq null" )]
     #[test_case(" = Null" => vec![None, None, None] ; "eq upper Null" )]
     #[test_case(" is_empty " => vec![None, None, None] ; "is_empty")]
-    #[test_case(" not (is_empty) " => vec![Some(1), Some(2), Some(3)] ; "not is_empty" )]
+    #[test_case(" not is_empty" => vec![Some(1), Some(2), Some(3)] ; "not is_empty" )]
+    #[test_case(" not < 2" => vec![None, None, Some(2), Some(3), None] ; "not less 2" )]
     fn iter_option(query_str: &str) -> Vec<Option<i32>> {
         let result: Vec<Option<i32>> = [None, Some(1), None, Some(2), Some(3), None]
             .into_iter()
@@ -451,7 +452,7 @@ mod test {
     fn iter_str_not_empty() -> Result<()> {
         let result: Vec<&str> = ["", "abc", "", "xyz", ""]
             .into_iter()
-            .filter(query("not ( is_empty )")?)
+            .filter(query("not is_empty")?)
             .collect();
         assert_eq!(vec!["abc", "xyz"], result);
 
