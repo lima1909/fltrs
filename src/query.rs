@@ -85,6 +85,7 @@ mod test {
     #[test_case("> 7" => false; "gt 7")]
     #[test_case("< 7" => false; "lt 7")]
     #[test_case("<7and>6" => false; "lt 7 and gt6")]
+    #[test_case("not < 7" => true; "not lt 7")]
     fn query_i32(input: &str) -> bool {
         let exp = parse(input).unwrap();
         (query(exp, &Operators::default()).unwrap())(&7)
@@ -95,6 +96,7 @@ mod test {
     #[test_case(r#"> "Ina""# => true; "lt Ina")]
     #[test_case(r#"len 6"# => true; "len 6")]
     #[test_case(r#"starts_with "J""# => true; "starts_with J")]
+    #[test_case(r#"not starts_with "J""# => false; "not starts_with J")]
     fn query_string(input: &str) -> bool {
         // assert!('c' > 'C');
         let exp = parse(input).unwrap();

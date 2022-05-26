@@ -4,11 +4,15 @@
 //! A filter is created based on an input string (query).
 //! This has particular advantages if the filter is created at runtime, i.e. in a GUI or command line tool (CLI).
 //!
+//! `Fltrs` has **no** dependencies!
+//!
 //! # Extensions:
 //!
 //! It is possible, to expand the filter/query to your own needs:
 //! - create your own [`mod@crate::operator`]
-//! - create a converter for the filter [`Value`] (e.g.: conversion of units). You can find examples on the [`Query`] builder page.
+//! - create a converter for the filter [`Value`] (e.g.: conversion of units).
+//!
+//! You can find examples on the [`Query`] builder page.
 //!
 //! # Examples:
 //!
@@ -21,6 +25,17 @@
 //!         .collect();
 //!
 //! assert_eq!(vec![3, 2, 4, 4, 3], result);
+//! ```
+//!
+//! ```
+//! use fltrs::query;
+//!
+//! let result: Vec<_> = ["Inge", "Petra", "Paul", "Egon", "Peter"]
+//!         .into_iter()
+//!         .filter(query("contains 'e'").unwrap())
+//!         .collect();
+//!
+//! assert_eq!(vec!["Inge", "Petra", "Peter"], result);
 //! ```
 //!
 //! ### Option queries:
@@ -65,6 +80,7 @@
 //! ```
 //! use fltrs::{PathResolver, Filterable, query};
 //!
+//! #[derive(PartialEq, Debug)]
 //! struct Point {
 //!     name: &'static str,
 //!     x:    i32,
@@ -90,17 +106,17 @@
 //!     }
 //! }
 //!
-//! assert_eq!(
-//!     1,
+//! let result: Vec<Point> =
 //!     [
 //!       Point { name: "Point_1_3", x: 1, y: 3},
 //!       Point { name: "Point_3_3", x: 3, y: 3},
 //!       Point { name: "Point_2_6", x: 2, y: 6},
 //!     ]
-//!         .into_iter()
-//!         .filter(query(r#"name contains "oi" and x one_of [3, 7]"#).unwrap())
-//!         .count()
-//! );
+//!      .into_iter()
+//!      .filter(query(r#"x one_of [3, 7]"#).unwrap())
+//!      .collect();
+//!
+//! assert_eq!(vec![Point { name: "Point_3_3", x: 3, y: 3}], result);
 //! ```
 //!
 
@@ -249,8 +265,8 @@ pub fn query<PR: PathResolver + 'static>(query: &str) -> Result<Predicate<PR>> {
 /// }
 ///
 /// let query = Query::build()
-///              .operators(&[("uppereq", upper_eq)])
-///              .query(r#" uppereq "ab" "#)
+///              .operators(&[("upper_eq", upper_eq)])
+///              .query(r#" upper_eq "ab" "#)
 ///              .unwrap();
 ///
 /// let result: Vec<&str> = ["yz", "aB", "Ab", "xY"].into_iter().filter(query).collect();
