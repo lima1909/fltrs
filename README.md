@@ -16,10 +16,10 @@ This has particular advantages if the filter is created at runtime, i.e. in a GU
 ## Extensions:
 
 It is possible, to expand the filter/query to your own needs:
-- create your own [`mod@crate::operator`]
-- create a converter for the filter [`Value`] (e.g.: conversion of units).
+- create your own [operator](https://docs.rs/fltrs/latest/fltrs/operator/index.html)
+- create a converter for the filter Value (e.g.: conversion of units).
 
-You can find examples on the [`Query`] builder page.
+You can find examples on the [Query](https://docs.rs/fltrs/latest/fltrs/struct.Query.html) builder page.
 
 ## Examples:
 
