@@ -14,6 +14,7 @@
 //! | `is_empty`    | string is empty                   | `name is_empty` or `name = ""` |
 //! | `contains`    | string contains other string/char | `name contains "Pe"`           |
 //! | `starts_with` | string starts with string/char    | `name starts_with "Pe"`        |
+//! | `ends_with`   | string ends with string/char      | `name ends_with "er"`          |
 //! | `one_of`      | one element from given list       | `x one_of [1, 3, 7]`           |
 //! | `regex`       | regexpression (feature = "regex") | `x regex "[0-9]{2}"`           |
 //!
@@ -41,6 +42,7 @@ impl<PR: PathResolver> Default for Operators<PR> {
                 ("is_empty", is_empty),
                 ("contains", contains),
                 ("starts_with", starts_with),
+                ("ends_with", ends_with),
                 ("one_of", one_of),
                 #[cfg(feature = "regex")]
                 ("regex", regex),
@@ -118,6 +120,14 @@ fn starts_with<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> 
     }))
 }
 
+fn ends_with<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| match &v {
+        Value::Text(t) => pr.value(idx).as_string().ends_with(t),
+        Value::Char(c) => pr.value(idx).as_string().ends_with(*c),
+        _ => false,
+    }))
+}
+
 fn one_of<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
     Ok(Box::new(move |pr| {
         if let Value::List(vs) = &v {
@@ -176,8 +186,8 @@ mod test {
     #[test]
     fn exec_contains_char() {
         let op = Operators::default();
-        let starts_with = op.get("contains", 0, Value::Char('u')).unwrap();
-        assert!((starts_with)(&"Paul"));
+        let contains = op.get("contains", 0, Value::Char('u')).unwrap();
+        assert!((contains)(&"Paul"));
     }
 
     #[test]
@@ -192,6 +202,23 @@ mod test {
         let op = Operators::default();
         let starts_with = op.get("starts_with", 0, Value::Char('P')).unwrap();
         assert!((starts_with)(&"Paul"));
+    }
+
+    #[test]
+    fn exec_ends_with_str() {
+        let op = Operators::default();
+        let ends_with = op.get("ends_with", 0, Value::Text("aul".into())).unwrap();
+        assert!((ends_with)(&"Paul"));
+    }
+
+    #[test]
+    fn exec_ends_with_char() {
+        let op = Operators::default();
+        let ends_with = op.get("ends_with", 0, Value::Char('l')).unwrap();
+        assert!((ends_with)(&"Paul"));
+
+        let ends_with = op.get("ends_with", 0, Value::Char('x')).unwrap();
+        assert!(!(ends_with)(&"Paul"));
     }
 
     #[test]
