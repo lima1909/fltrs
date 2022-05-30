@@ -1,12 +1,14 @@
 //! # Fltrs
 //!
+//! *Easy to define filters for querying lists.* `Fltrs` has **no** dependencies!
+//!
+//! ## Overview
+//!
 //! Fltrs want to support creating easy, fast and expandable filters for iterable things (like Vec, Array, Map, Set, ...) in rust.
 //! A filter is created based on an input string (query).
 //! This has particular advantages if the filter is created at runtime, i.e. in a GUI or command line tool (CLI).
 //!
-//! `Fltrs` has **no** dependencies!
-//!
-//! # Extensions:
+//! ## Extensions:
 //!
 //! It is possible, to expand the filter/query to your own needs:
 //! - create your own [`mod@crate::operator`]
@@ -14,7 +16,7 @@
 //!
 //! You can find examples on the [`Query`] builder page.
 //!
-//! # Examples:
+//! ## Examples:
 //!
 //! ```
 //! use fltrs::query;
@@ -75,7 +77,9 @@
 //! assert_eq!(vec![3, 2, 1, 4, 7, 4, 3], result);
 //! ```
 //!
-//! ### Fltrs supported queries on structs too. This is possible, if the struct implement the trait: [`PathResolver`].
+//! ### Fltrs supported queries on structs too.
+//!
+//! This is possible, if the struct implement the trait: [`PathResolver`].
 //!
 //! ```
 //! use fltrs::{PathResolver, Filterable, query};
