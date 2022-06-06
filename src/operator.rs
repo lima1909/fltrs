@@ -18,6 +18,7 @@
 //! | `one_of`      | one element from given list       | `x one_of [1, 3, 7]`           |
 //! | `regex`       | regexpression (feature = "regex") | `x regex "[0-9]{2}"`           |
 //!
+use crate::token::Op;
 use crate::value::Value;
 use crate::{FltrError, PathResolver, Predicate, Result};
 
@@ -51,10 +52,10 @@ impl<PR: PathResolver> Default for Operators<PR> {
     }
 }
 
-impl<PR> Operators<PR> {
-    pub fn get(&self, op: &str, idx: usize, v: Value) -> Result<Predicate<PR>> {
+impl<PR: PathResolver> Operators<PR> {
+    pub fn get(&self, op: &Op, idx: usize, v: Value) -> Result<Predicate<PR>> {
         for (n, f) in &self.op {
-            if n == &op {
+            if n == &op.name {
                 return f(idx, v);
             }
         }
@@ -151,73 +152,87 @@ mod test {
     #[test]
     fn get() {
         let op = Operators::<bool>::default();
-        assert!(op.get("=", 0, Value::Bool(true)).is_ok());
-        assert!(op.get("foo", 0, Value::Bool(true)).is_err());
+        assert!(op.get(&Op::from_str("="), 0, Value::Bool(true)).is_ok());
+        assert!(op.get(&Op::from_str("foo"), 0, Value::Bool(true)).is_err());
     }
 
     #[test]
     fn exec_bool() {
         let op = Operators::default();
-        let ne = op.get("!=", 0, Value::Bool(false)).unwrap();
+        let ne = op.get(&Op::from_str("!="), 0, Value::Bool(false)).unwrap();
         assert!((ne)(&true));
     }
 
     #[test]
     fn exec_len_string() {
         let op = Operators::default();
-        let len = op.get("len", 0, Value::Int(4)).unwrap();
+        let len = op.get(&Op::from_str("len"), 0, Value::Int(4)).unwrap();
         assert!((len)(&String::from("Paul")));
     }
 
     #[test]
     fn exec_len_str() {
         let op = Operators::default();
-        let len = op.get("len", 0, Value::Int(4)).unwrap();
+        let len = op.get(&Op::from_str("len"), 0, Value::Int(4)).unwrap();
         assert!((len)(&"Paul"));
     }
 
     #[test]
     fn exec_contains_str() {
         let op = Operators::default();
-        let starts_with = op.get("contains", 0, Value::Text("au".into())).unwrap();
+        let starts_with = op
+            .get(&Op::from_str("contains"), 0, Value::Text("au".into()))
+            .unwrap();
         assert!((starts_with)(&"Paul"));
     }
 
     #[test]
     fn exec_contains_char() {
         let op = Operators::default();
-        let contains = op.get("contains", 0, Value::Char('u')).unwrap();
+        let contains = op
+            .get(&Op::from_str("contains"), 0, Value::Char('u'))
+            .unwrap();
         assert!((contains)(&"Paul"));
     }
 
     #[test]
     fn exec_starts_with_str() {
         let op = Operators::default();
-        let starts_with = op.get("starts_with", 0, Value::Text("Pa".into())).unwrap();
+        let starts_with = op
+            .get(&Op::from_str("starts_with"), 0, Value::Text("Pa".into()))
+            .unwrap();
         assert!((starts_with)(&"Paul"));
     }
 
     #[test]
     fn exec_starts_with_char() {
         let op = Operators::default();
-        let starts_with = op.get("starts_with", 0, Value::Char('P')).unwrap();
+        let starts_with = op
+            .get(&Op::from_str("starts_with"), 0, Value::Char('P'))
+            .unwrap();
         assert!((starts_with)(&"Paul"));
     }
 
     #[test]
     fn exec_ends_with_str() {
         let op = Operators::default();
-        let ends_with = op.get("ends_with", 0, Value::Text("aul".into())).unwrap();
+        let ends_with = op
+            .get(&Op::from_str("ends_with"), 0, Value::Text("aul".into()))
+            .unwrap();
         assert!((ends_with)(&"Paul"));
     }
 
     #[test]
     fn exec_ends_with_char() {
         let op = Operators::default();
-        let ends_with = op.get("ends_with", 0, Value::Char('l')).unwrap();
+        let ends_with = op
+            .get(&Op::from_str("ends_with"), 0, Value::Char('l'))
+            .unwrap();
         assert!((ends_with)(&"Paul"));
 
-        let ends_with = op.get("ends_with", 0, Value::Char('x')).unwrap();
+        let ends_with = op
+            .get(&Op::from_str("ends_with"), 0, Value::Char('x'))
+            .unwrap();
         assert!(!(ends_with)(&"Paul"));
     }
 
@@ -226,7 +241,7 @@ mod test {
         let op = Operators::default();
         let one_of = op
             .get(
-                "one_of",
+                &Op::from_str("one_of"),
                 0,
                 Value::List(vec![Value::Text("Inge".into()), Value::Text("Paul".into())]),
             )
@@ -234,24 +249,24 @@ mod test {
         assert!((one_of)(&"Paul"));
     }
 
-    #[test_case("==",  'f', Value::Char('f')  ; "eqeq 'f'")]
-    #[test_case("=",  'f', Value::Char('f')  ; "eq 'f'")]
-    #[test_case("!=",  'g', Value::Char('f')  ; "ne 'g'")]
-    #[test_case(">",  'g', Value::Char('f')  ; "gt 'g'")]
-    #[test_case("<",  'a', Value::Char('f')  ; "lt 'a'")]
-    fn ops_char(op: &str, arg: char, val: Value) {
+    #[test_case(Op::from_str("=="),  'f', Value::Char('f')  ; "eqeq 'f'")]
+    #[test_case(Op::from_str("="),  'f', Value::Char('f')  ; "eq 'f'")]
+    #[test_case(Op::from_str("!="),  'g', Value::Char('f')  ; "ne 'g'")]
+    #[test_case(Op::from_str(">"),  'g', Value::Char('f')  ; "gt 'g'")]
+    #[test_case(Op::from_str("<"),  'a', Value::Char('f')  ; "lt 'a'")]
+    fn ops_char(op: Op, arg: char, val: Value) {
         let ops = Operators::default();
-        let exec = ops.get(op, 0, val).unwrap();
+        let exec = ops.get(&op, 0, val).unwrap();
         assert!((exec)(&arg));
     }
 
-    #[test_case("=",  4.2, Value::Float(4.2)  ; "eq 4.2")]
-    #[test_case("!=",  4.2, Value::Float(5.3)  ; "ne 4.2")]
-    #[test_case(">",  4.2, Value::Float(3.1)  ; "gt 4.2")]
-    #[test_case("<",  4.2, Value::Float(5.3)  ; "lt 4.2")]
-    fn ops_f32(op: &str, arg: f32, val: Value) {
+    #[test_case(Op::from_str("="),  4.2, Value::Float(4.2)  ; "eq 4.2")]
+    #[test_case(Op::from_str("!="),  4.2, Value::Float(5.3)  ; "ne 4.2")]
+    #[test_case(Op::from_str(">"),  4.2, Value::Float(3.1)  ; "gt 4.2")]
+    #[test_case(Op::from_str("<"),  4.2, Value::Float(5.3)  ; "lt 4.2")]
+    fn ops_f32(op: Op, arg: f32, val: Value) {
         let ops = Operators::default();
-        let exec = ops.get(op, 0, val).unwrap();
+        let exec = ops.get(&op, 0, val).unwrap();
         assert!((exec)(&arg));
     }
 
@@ -261,7 +276,7 @@ mod test {
     #[test_case("[0-9]{2-[0-9]{1}-[0-9]{2}", "1-1-1" => Err(FltrError("regex parse error:\n    [0-9]{2-[0-9]{1}-[0-9]{2}\n         ^^\nerror: unclosed counted repetition".into()))  ; "error")]
     fn ops_regex(regex: &str, input: &str) -> Result<bool> {
         let ops = Operators::default();
-        let exec = ops.get("regex", 0, Value::Text(regex.to_string()))?;
+        let exec = ops.get(&Op::from_str("regex"), 0, Value::Text(regex.to_string()))?;
         Ok((exec)(&input))
     }
 }

@@ -103,8 +103,14 @@ impl Display for Filter {
 #[derive(PartialEq, PartialOrd, Debug)]
 pub(crate) struct Predicate {
     pub(crate) path: Option<String>,
-    pub(crate) op: String,
+    pub(crate) op: Op,
     pub(crate) value: Value,
+}
+
+impl Predicate {
+    pub(crate) fn has_path(&self) -> bool {
+        self.path.is_some()
+    }
 }
 
 impl Display for Predicate {
@@ -117,8 +123,34 @@ impl Display for Predicate {
     }
 }
 
-impl Predicate {
-    pub(crate) fn has_path(&self) -> bool {
-        self.path.is_some()
+#[derive(PartialEq, PartialOrd, Debug)]
+pub struct Op {
+    pub name: String,
+    pub flag: Option<char>,
+}
+
+impl Op {
+    pub(crate) fn new(name: &str, flag: Option<char>) -> Self {
+        Self {
+            name: name.to_owned(),
+            flag,
+        }
+    }
+
+    pub(crate) fn from_str(name: &str) -> Self {
+        Self {
+            name: name.to_owned(),
+            flag: None,
+        }
+    }
+}
+
+impl Display for Op {
+    fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(flag) = &self.flag {
+            write!(fm, "{}::{} ", self.name, flag)?;
+        }
+
+        write!(fm, "{}", self.name)
     }
 }

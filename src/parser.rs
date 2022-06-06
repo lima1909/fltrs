@@ -1,6 +1,6 @@
 use crate::operator::Operators;
 use crate::scanner::{Result, Scanner};
-use crate::token::{Exp, Filter, Predicate};
+use crate::token::{Exp, Filter, Op, Predicate};
 use crate::value::{str_to_number, Value, Value::*};
 
 use std::{
@@ -180,12 +180,16 @@ pub(crate) fn predicate() -> impl FnMut(&mut Parser) -> Result<Predicate> {
     }
 }
 
-pub(crate) fn op() -> impl FnMut(&mut Parser) -> Result<String> {
+pub(crate) fn op() -> impl FnMut(&mut Parser) -> Result<Op> {
     |parser: &mut Parser| {
         let op_str = parser.s.look_while(is_not_ws)?;
         if let Some(op) = parser.starts_with_valid_op(&op_str) {
             parser.s.take(&op);
-            return Ok(op);
+
+            if parser.take(":") {
+                return Ok(Op::new(&op, parser.s.take_one_char()));
+            }
+            return Ok(Op::new(&op, None));
         }
         Err(parser.parse_err(&format!("'{op_str}' is not a valid filter operation")))
     }
@@ -574,11 +578,16 @@ mod test {
         assert_eq!(err, path()(&mut p).err().unwrap());
     }
 
-    #[test_case("=", "="; "eq")]
-    #[test_case(">=", ">="; "ge")]
-    #[test_case("len", "len")]
-    #[test_case("starts_with", "starts_with")]
-    fn op_check(input: &str, expect: &str) {
+    #[test_case("=", Op::from_str("="); "eq")]
+    #[test_case("=:i", Op::new("=", Some('i')); "eq:i")]
+    #[test_case(">=", Op::from_str(">="); "ge")]
+    #[test_case("len", Op::from_str("len"))]
+    #[test_case("starts_with", Op::from_str("starts_with"))]
+    #[test_case("contains:", Op::from_str("contains"))]
+    #[test_case("contains:i", Op::new("contains", Some('i')))]
+    #[test_case("contains:x", Op::new("contains", Some('x')))]
+    #[test_case("contains::", Op::new("contains", Some(':')))]
+    fn op_check(input: &str, expect: Op) {
         let mut p = Parser::new(input);
         assert_eq!(expect, op()(&mut p).unwrap());
     }
@@ -589,14 +598,17 @@ mod test {
         assert_eq!(err, op()(&mut p).err().unwrap());
     }
 
-    #[test_case("=7", Predicate{path: None, op: String::from("="), value: Int(7)}; "eq7")]
-    #[test_case("= 7", Predicate{path: None, op: String::from("="), value: Int(7)}; "eq 7")]
-    #[test_case("name len 3", Predicate{path: Some(String::from("name")), op: String::from("len"), value: Int(3)}; "name len 3")]
-    #[test_case("name len3", Predicate{path: Some(String::from("name")), op: String::from("len"), value: Int(3)}; "name len3")]
-    #[test_case("is_empty", Predicate{path: None, op: String::from("is_empty"), value: Null}; "is_empty")]
-    #[test_case("name is_empty", Predicate{path: Some(String::from("name")), op: String::from("is_empty"), value: Null}; "name is_empty")]
-    #[test_case("=", Predicate{path: None, op: String::from("="), value: Null}; "eq empty")]
-    #[test_case("= ", Predicate{path: None, op: String::from("="), value: Null}; "eq empty space")]
+    #[test_case("=7", Predicate{path: None, op: Op::from_str("="), value: Int(7)}; "eq7")]
+    #[test_case("= 7", Predicate{path: None, op: Op::from_str("="), value: Int(7)}; "eq 7")]
+    #[test_case("name len 3", Predicate{path: Some(String::from("name")), op: Op::from_str("len"), value: Int(3)}; "name len 3")]
+    #[test_case("name len3", Predicate{path: Some(String::from("name")), op: Op::from_str("len"), value: Int(3)}; "name len3")]
+    #[test_case("is_empty", Predicate{path: None, op: Op::from_str("is_empty"), value: Null}; "is_empty")]
+    #[test_case("name is_empty", Predicate{path: Some(String::from("name")), op: Op::from_str("is_empty"), value: Null}; "name is_empty")]
+    #[test_case("=", Predicate{path: None, op: Op::from_str("="), value: Null}; "eq empty")]
+    #[test_case("= ", Predicate{path: None, op: Op::from_str("="), value: Null}; "eq empty space")]
+    #[test_case(r#"=:i "paul" "#, Predicate{path: None, op: Op::new("=", Some('i')), value: Text("paul".into())}; "eq case insensitive paul")]
+    #[test_case(r#"=:: "paul" "#, Predicate{path: None, op: Op::new("=", Some(':')), value: Text("paul".into())}; "eq:: paul")]
+    // #[test_case(r#"=::i "paul" "#, Predicate{path: None, op: Op::new("=", Some(':')), value: Text("paul".into())}; "eq invalid paul")]
     fn predicate_check(input: &str, expect: Predicate) {
         let mut p = Parser::new(input);
         assert_eq!(expect, predicate()(&mut p).unwrap());
@@ -604,13 +616,14 @@ mod test {
 
     #[test_case("age 3", ParseError {input: "age 3".into(),location: Location { line: 1, column: 4},err_msg: "'3' is not a valid filter operation".into()} ; "age 3")]
     #[test_case(r#"name = "Paul "#, ParseError {input: r#"name = "Paul "#.into(),location: Location { line: 1, column: 13},err_msg: "missing closing character: '\"'".into()} ; r#"name = "Paul "#)]
+    // #[test_case(r#"name =::i "Paul "#, ParseError {input: r#"name =::i "Paul "#.into(),location: Location { line: 1, column: 13},err_msg: "missing closing character: '\"'".into()} ; r#"name =:i "Paul "#)]
     fn predicate_err(input: &str, err: ParseError) {
         let mut p = Parser::new(input);
         assert_eq!(err, predicate()(&mut p).err().unwrap());
     }
 
-    #[test_case("= 7", Filter::Predicate(Predicate{path: None, op: String::from("="), value: Int(7)}); "eq 7")]
-    #[test_case("name len 3", Filter::Predicate(Predicate{path: Some(String::from("name")), op: String::from("len"), value: Int(3)}); "name len 3")]
+    #[test_case("= 7", Filter::Predicate(Predicate{path: None, op: Op::from_str("="), value: Int(7)}); "eq 7")]
+    #[test_case("name len 3", Filter::Predicate(Predicate{path: Some(String::from("name")), op: Op::from_str("len"), value: Int(3)}); "name len 3")]
     fn filter_check(input: &str, expect: Filter) {
         let mut p = Parser::new(input);
         assert_eq!(expect, filter()(&mut p).unwrap());
