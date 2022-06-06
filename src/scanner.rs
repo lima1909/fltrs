@@ -94,6 +94,15 @@ impl<'a> Scanner<'a> {
         false
     }
 
+    /// if a next char exist, then take this char, otherwise None
+    pub(crate) fn take_one_char(&mut self) -> Option<char> {
+        if let Some(c) = self.look() {
+            self.ptr += 1;
+            return Some(c);
+        }
+        None
+    }
+
     /// take all chars for the given function: `f` gets true (inc the pointer)
     /// name__x -> name, (rest: __x)
     pub(crate) fn take_while(
@@ -223,6 +232,14 @@ mod test {
         let mut s = Scanner::new(input);
         s.ptr = p;
         s.look_str(take_str)
+    }
+
+    #[test_case("" => (None, 0))]
+    #[test_case("f" => (Some('f'), 1))]
+    #[test_case("foo" => (Some('f'), 1))]
+    fn take_one_char(input: &str) -> (Option<char>, usize) {
+        let mut s = Scanner::new(input);
+        (s.take_one_char(), s.ptr)
     }
 
     #[test]
