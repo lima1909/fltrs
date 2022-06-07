@@ -20,9 +20,9 @@
 //!
 use crate::token::Op;
 use crate::value::Value;
-use crate::{FltrError, PathResolver, Predicate, Result};
+use crate::{Filterable, FltrError, PathResolver, Predicate, Result};
 
-pub type OperatorFn<PR> = fn(idx: usize, v: Value) -> Result<Predicate<PR>>;
+pub type OperatorFn<PR> = fn(fr: FlagResolver) -> Result<Predicate<PR>>;
 
 pub struct Operators<PR> {
     pub(crate) op: Vec<(&'static str, OperatorFn<PR>)>,
@@ -56,7 +56,7 @@ impl<PR: PathResolver> Operators<PR> {
     pub fn get(&self, op: &Op, idx: usize, v: Value) -> Result<Predicate<PR>> {
         for (n, f) in &self.op {
             if n == &op.name {
-                return f(idx, v);
+                return f(FlagResolver::new(idx, v, op.flag));
             }
         }
         Err(FltrError(format!("invalid operation: '{}'", op)))
@@ -67,81 +67,122 @@ impl<PR: PathResolver> Operators<PR> {
     }
 }
 
-fn eq<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| pr.value(idx) == &v))
+pub struct FlagResolver {
+    idx: usize,
+    value: Value,
+    // flag: Option<char>,
 }
 
-fn ne<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| pr.value(idx) != &v))
-}
-
-fn le<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| pr.value(idx).le(&v)))
-}
-
-fn lt<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| pr.value(idx).lt(&v)))
-}
-
-fn ge<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| pr.value(idx).ge(&v)))
-}
-
-fn gt<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| pr.value(idx).gt(&v)))
-}
-
-fn len<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| match v {
-        Value::Int(l) => pr.value(idx).as_string().len() == l as usize,
-        _ => false,
-    }))
-}
-
-fn is_empty<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| match &v {
-        Value::Null => pr.value(idx).as_string().is_empty(),
-        _ => false,
-    }))
-}
-
-fn contains<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| match &v {
-        Value::Text(t) => pr.value(idx).as_string().contains(t),
-        Value::Char(c) => pr.value(idx).as_string().contains(*c),
-        _ => false,
-    }))
-}
-
-fn starts_with<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| match &v {
-        Value::Text(t) => pr.value(idx).as_string().starts_with(t),
-        Value::Char(c) => pr.value(idx).as_string().starts_with(*c),
-        _ => false,
-    }))
-}
-
-fn ends_with<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| match &v {
-        Value::Text(t) => pr.value(idx).as_string().ends_with(t),
-        Value::Char(c) => pr.value(idx).as_string().ends_with(*c),
-        _ => false,
-    }))
-}
-
-fn one_of<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| {
-        if let Value::List(vs) = &v {
-            return vs.iter().filter(|v| pr.value(idx).eq(*v)).count() > 0;
+impl FlagResolver {
+    pub fn new(idx: usize, value: Value, flag: Option<char>) -> Self {
+        let mut v = value;
+        if let Some(f) = flag {
+            if f == 'i' {
+                v = Value::Text(v.to_string().to_ascii_uppercase());
+            }
         }
-        pr.value(idx).eq(&v)
+        Self {
+            idx,
+            value: v,
+            // flag,
+        }
+    }
+
+    #[inline]
+    pub fn filterable<'pr, PR: PathResolver>(&self, pr: &'pr PR) -> &'pr dyn Filterable {
+        // if let Some(f) = self.flag {
+        //     if f == 'i' {
+        //         return pr.value(self.idx).as_string().to_ascii_uppercase();
+        //     }
+        // }
+
+        pr.value(self.idx)
+    }
+
+    #[inline]
+    pub fn value(&self) -> &Value {
+        &self.value
+    }
+}
+
+fn eq<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| fr.filterable(pr) == fr.value()))
+}
+
+fn ne<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| fr.filterable(pr) != fr.value()))
+}
+
+fn le<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| fr.filterable(pr).le(fr.value())))
+}
+
+fn lt<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| fr.filterable(pr).lt(fr.value())))
+}
+
+fn ge<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| fr.filterable(pr).ge(fr.value())))
+}
+
+fn gt<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| fr.filterable(pr).gt(fr.value())))
+}
+
+fn len<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| match fr.value {
+        Value::Int(l) => fr.filterable(pr).as_string().len() == l as usize,
+        _ => false,
+    }))
+}
+
+fn is_empty<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| match fr.value() {
+        Value::Null => fr.filterable(pr).as_string().is_empty(),
+        _ => false,
+    }))
+}
+
+fn contains<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| match fr.value() {
+        Value::Text(t) => fr.filterable(pr).as_string().contains(t),
+        Value::Char(c) => fr.filterable(pr).as_string().contains(*c),
+        _ => false,
+    }))
+}
+
+fn starts_with<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| match fr.value() {
+        Value::Text(t) => fr.filterable(pr).as_string().starts_with(t),
+        Value::Char(c) => fr.filterable(pr).as_string().starts_with(*c),
+        _ => false,
+    }))
+}
+
+fn ends_with<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| match fr.value() {
+        Value::Text(t) => fr.filterable(pr).as_string().ends_with(t),
+        Value::Char(c) => fr.filterable(pr).as_string().ends_with(*c),
+        _ => false,
+    }))
+}
+
+fn one_of<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
+    Ok(Box::new(move |pr| {
+        if let Value::List(vs) = fr.value() {
+            return vs.iter().filter(|v| fr.filterable(pr).eq(*v)).count() > 0;
+        }
+        fr.filterable(pr).eq(fr.value())
     }))
 }
 
 #[cfg(feature = "regex")]
-fn regex<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
-    let rg = regex::Regex::new(&v.to_string()).or_else(|e| Err(FltrError(e.to_string())))?;
-    Ok(Box::new(move |pr| rg.is_match(&pr.value(idx).as_string())))
+fn regex<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
+    let rg =
+        regex::Regex::new(&fr.value().to_string()).or_else(|e| Err(FltrError(e.to_string())))?;
+    Ok(Box::new(move |pr| {
+        rg.is_match(&fr.filterable(pr).as_string())
+    }))
 }
 
 #[cfg(test)]

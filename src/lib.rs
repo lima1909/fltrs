@@ -255,13 +255,13 @@ pub fn query<PR: PathResolver + 'static>(query: &str) -> Result<Predicate<PR>> {
 /// Create your own operator:
 ///
 /// ```
-/// use fltrs::{value::Value, PathResolver, Predicate, Query, Result, query};
+/// use fltrs::{value::Value, PathResolver, Predicate, Query, Result, query, operator::FlagResolver};
 ///
-/// fn upper_eq<PR: PathResolver>(idx: usize, v: Value) -> Result<Predicate<PR>> {
+/// fn upper_eq<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
 ///     Ok(Box::new(
 ///         move |pr| {
-///           if let Value::Text(t) = &v {
-///               return pr.value(idx).as_string().to_uppercase().eq(&t.to_uppercase());
+///           if let Value::Text(t) = fr.value() {
+///               return fr.filterable(pr).as_string().to_uppercase().eq(&t.to_uppercase());
 ///           }
 ///           false
 ///         }
