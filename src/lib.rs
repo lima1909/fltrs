@@ -260,12 +260,12 @@ pub fn query<PR: PathResolver + 'static>(query: &str) -> Result<Predicate<PR>> {
 /// fn upper_eq<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
 ///     Ok(Box::new(
 ///         move |pr| {
-///           if let Value::Text(t) = fr.value() {
-///               return fr.filterable(pr).as_string().to_uppercase().eq(&t.to_uppercase());
-///           }
-///           false
+///             fr.handle(pr, |f, v| match v {
+///                 Value::Text(t) => f.as_string().to_uppercase().eq(&t.to_uppercase()),
+///                 _ => false,
+///             })
 ///         }
-///      ))
+///     ))
 /// }
 ///
 /// let query = Query::build()
@@ -492,6 +492,17 @@ mod test {
             .filter(query(r#"one_of [""]"#)?)
             .collect();
         assert_eq!(vec!["", "", ""], result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn iter_contains_case_intensitive() -> Result<()> {
+        let result: Vec<&str> = ["abc", "aBc", "xyz", "Xyz", ""]
+            .into_iter()
+            .filter(query("contains:i 'b'")?)
+            .collect();
+        assert_eq!(vec!["abc", "aBc"], result);
 
         Ok(())
     }
