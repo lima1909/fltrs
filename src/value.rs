@@ -204,6 +204,8 @@ mod test {
         assert!("foo" == Value::Text("foo".into()));
         assert!("foo" > Value::Text("bar".into()));
 
+        assert!("x" > Value::Text("X".into()));
+
         assert_eq!("foo".to_string(), Value::Text("foo".into()).to_string());
     }
 
@@ -211,6 +213,7 @@ mod test {
     fn cmp_char() {
         assert!('X' == Value::Char('X'));
         assert!('Y' > 'X');
+        assert!('x' > 'X');
         assert!('Y' > Value::Char('X'));
 
         assert_eq!('Z'.to_string(), Value::Char('Z').to_string());

@@ -506,4 +506,57 @@ mod test {
 
         Ok(())
     }
+
+    #[test]
+    fn iter_starts_with_case_intensitive() -> Result<()> {
+        let result: Vec<&str> = ["abc", "aBc", "xyz", "Xyz", ""]
+            .into_iter()
+            .filter(query(r#"starts_with:i 'x'"#)?)
+            .collect();
+        assert_eq!(vec!["xyz", "Xyz"], result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn iter_ends_with_case_intensitive() -> Result<()> {
+        let result: Vec<&str> = ["abc", "aBc", "xyz", "Xyz", ""]
+            .into_iter()
+            .filter(query(r#"ends_with:i "bc""#)?)
+            .collect();
+        assert_eq!(vec!["abc", "aBc"], result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn iter_greater_char_case_intensitive() -> Result<()> {
+        let result: Vec<_> = ['b', 'B', 'x', 'X']
+            .into_iter()
+            .filter(query(">:i 'w'")?)
+            .collect();
+        assert_eq!(vec!['x', 'X'], result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn iter_greater_int_case_intensitive() -> Result<()> {
+        // 11 is less than 2 ==> "11" < 22" !!!
+        let result: Vec<_> = [1, 2, 3, 11].into_iter().filter(query(">:i 2")?).collect();
+        assert_eq!(vec![3], result);
+
+        Ok(())
+    }
+
+    // #[test]
+    // fn iter_len_case_intensitive() -> Result<()> {
+    //     let result: Vec<_> = ["abcd", "aBc", "xy", "Xyz", ""]
+    //         .into_iter()
+    //         .filter(query("len:i 3")?)
+    //         .collect();
+    //     assert_eq!(vec!["aBc", "Xyz"], result);
+
+    //     Ok(())
+    // }
 }
