@@ -38,6 +38,14 @@
 //!         .collect();
 //!
 //! assert_eq!(vec!["Inge", "Petra", "Peter"], result);
+//! 
+//! // or case insensitive (`contains` with flag: `i`)
+//! let result: Vec<_> = ["Inge", "Petra", "Paul", "Egon", "Peter"]
+//!         .into_iter()
+//!         .filter(query("contains:i 'e'").unwrap())
+//!         .collect();
+//!
+//! assert_eq!(vec!["Inge", "Petra", "Egon", "Peter"], result);
 //! ```
 //!
 //! ### Option queries:
@@ -133,7 +141,7 @@ mod token;
 pub mod value;
 
 pub use crate::error::FltrError;
-use crate::operator::{OperatorFn, Operators};
+use crate::operator::{Operator, OperatorFn, Operators};
 use crate::parser::{parse, AsValueFn, Parser};
 use crate::value::Value;
 
@@ -316,7 +324,10 @@ impl<PR: PathResolver + 'static> Query<PR> {
     }
 
     pub fn operators(mut self, ops: &[(&'static str, OperatorFn<PR>)]) -> Self {
-        self.ops.op.extend_from_slice(ops);
+        self.ops.ops = ops
+            .iter()
+            .map(|(n, op)| (*n, Operator::new(*op, &[], &[])))
+            .collect();
         self
     }
 
@@ -542,21 +553,21 @@ mod test {
 
     #[test]
     fn iter_greater_int_case_intensitive() -> Result<()> {
-        // 11 is less than 2 ==> "11" < 22" !!!
+        // 11 is less than 2 ==> "11" < "2" !!!
         let result: Vec<_> = [1, 2, 3, 11].into_iter().filter(query(">:i 2")?).collect();
         assert_eq!(vec![3], result);
 
         Ok(())
     }
 
-    // #[test]
-    // fn iter_len_case_intensitive() -> Result<()> {
-    //     let result: Vec<_> = ["abcd", "aBc", "xy", "Xyz", ""]
-    //         .into_iter()
-    //         .filter(query("len:i 3")?)
-    //         .collect();
-    //     assert_eq!(vec!["aBc", "Xyz"], result);
+    #[test]
+    fn iter_len_case_intensitive() -> Result<()> {
+        let result: Vec<_> = ["abcd", "aBc", "xy", "Xyz", ""]
+            .into_iter()
+            .filter(query("len:i 3")?)
+            .collect();
+        assert_eq!(vec!["aBc", "Xyz"], result);
 
-    //     Ok(())
-    // }
+        Ok(())
+    }
 }

@@ -2,51 +2,75 @@
 //!
 //! ### Overview:
 //!
-//! | operator      | meaning                           | example                        |
-//! |---------------|---------------------------------- |------------------------------- |
-//! | `=` or `==`   | equal                             | `= 5` or `name = "Peter"`      |
-//! | `!=`          | not equal                         | `!= 5` or `name != "Peter"`    |
-//! | `<`           | less                              | `< 5`                          |
-//! | `<=`          | less equal                        | `<= 5`                         |
-//! | `>`           | greater                           | `> 5`                          |
-//! | `>=`          | greater equal                     | `>= 5`                         |
-//! | `len`         | length of an string               | `name len 5`                   |
-//! | `is_empty`    | string is empty                   | `name is_empty` or `name = ""` |
-//! | `contains`    | string contains other string/char | `name contains "Pe"`           |
-//! | `starts_with` | string starts with string/char    | `name starts_with "Pe"`        |
-//! | `ends_with`   | string ends with string/char      | `name ends_with "er"`          |
-//! | `one_of`      | one element from given list       | `x one_of [1, 3, 7]`           |
-//! | `regex`       | regexpression (feature = "regex") | `x regex "[0-9]{2}"`           |
+//! | operator      | meaning                           | example                        | supported flags |
+//! |---------------|-----------------------------------|--------------------------------|-----------------|
+//! | `=` or `==`   | equal                             | `= 5` or `name = "Peter"`      | i |
+//! | `!=`          | not equal                         | `!= 5` or `name != "Peter"`    | i |
+//! | `<`           | less                              | `< 5`                          | i |
+//! | `<=`          | less equal                        | `<= 5`                         | i |
+//! | `>`           | greater                           | `> 5`                          | i |
+//! | `>=`          | greater equal                     | `>= 5`                         | i |
+//! | `len`         | length of an string               | `name len 5`                   |  |
+//! | `is_empty`    | string is empty                   | `name is_empty` or `name = ""` |  |
+//! | `contains`    | string contains other string/char | `name contains "Pe"`           | i |
+//! | `starts_with` | string starts with string/char    | `name starts_with "Pe"`        | i |
+//! | `ends_with`   | string ends with string/char      | `name ends_with "er"`          | i |
+//! | `one_of`      | one element from given list       | `x one_of [1, 3, 7]`           | i |
+//! | `regex`       | regexpression (feature = "regex") | `x regex "[0-9]{2}"`           |  |
 //!
+//! ### Flags
+//! 
+//! | flag | meaning          | example                             | hint                                                                                                                    |
+//! |------|------------------|-------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
+//! | `i`  | case insensitive |`=:i "ab"`<br /> (`ab, aB, Ab, AB`)  | is equivalent to a text comparison<br /> (greater and less for numbers does not work: 11 is less than 2 ==> "11" < "2") |
+//! 
+//! 
 use crate::token::Op;
 use crate::value::Value;
 use crate::{Filterable, FltrError, PathResolver, Predicate, Result};
 
 pub type OperatorFn<PR> = fn(fr: FlagResolver) -> Result<Predicate<PR>>;
 
+#[allow(dead_code)] //TODO: remove
+pub struct Operator<PR> {
+    f: OperatorFn<PR>,
+    flags: Vec<char>,
+    values: Vec<Value>,
+}
+
+impl<PR> Operator<PR> {
+    pub fn new(f: OperatorFn<PR>, flags: &[char], values: &[Value]) -> Self {
+        Self {
+            f,
+            flags: Vec::from(flags),
+            values: Vec::from(values),
+        }
+    }
+}
+
 pub struct Operators<PR> {
-    pub(crate) op: Vec<(&'static str, OperatorFn<PR>)>,
+    pub(crate) ops: Vec<(&'static str, Operator<PR>)>,
 }
 
 impl<PR: PathResolver> Default for Operators<PR> {
     fn default() -> Self {
         Self {
-            op: vec![
-                ("==", eq as OperatorFn<PR>),
-                ("=", eq),
-                ("!=", ne),
-                ("<=", le),
-                ("<", lt),
-                (">=", ge),
-                (">", gt),
-                ("len", len),
-                ("is_empty", is_empty),
-                ("contains", contains),
-                ("starts_with", starts_with),
-                ("ends_with", ends_with),
-                ("one_of", one_of),
+            ops: vec![
+                ("==", Operator::new(eq, &['i'], &[])),
+                ("=", Operator::new(eq, &['i'], &[])),
+                ("!=", Operator::new(ne, &['i'], &[])),
+                ("<=", Operator::new(le, &['i'], &[])),
+                ("<", Operator::new(lt, &['i'], &[])),
+                (">=", Operator::new(ge, &['i'], &[])),
+                (">", Operator::new(gt, &['i'], &[])),
+                ("len", Operator::new(len, &[], &[])),
+                ("is_empty", Operator::new(is_empty, &[], &[])),
+                ("contains", Operator::new(contains, &['i'], &[])),
+                ("starts_with", Operator::new(starts_with, &['i'], &[])),
+                ("ends_with", Operator::new(ends_with, &['i'], &[])),
+                ("one_of", Operator::new(one_of, &['i'], &[])),
                 #[cfg(feature = "regex")]
-                ("regex", regex),
+                ("regex", Operator::new(regex, &[], &[])),
             ],
         }
     }
@@ -54,16 +78,17 @@ impl<PR: PathResolver> Default for Operators<PR> {
 
 impl<PR: PathResolver> Operators<PR> {
     pub fn get(&self, op: &Op, idx: usize, v: Value) -> Result<Predicate<PR>> {
-        for (n, f) in &self.op {
+        for (n, o) in &self.ops {
             if n == &op.name {
-                return f(FlagResolver::new(idx, v, op.flag));
+                let f = o.f;
+                return f(FlagResolver::new(idx, v, op.flag, &o.flags));
             }
         }
         Err(FltrError(format!("invalid operation: '{}'", op)))
     }
 
     pub fn get_ops_names(&self) -> Vec<&'static str> {
-        self.op.iter().map(|(s, _)| *s).collect()
+        self.ops.iter().map(|(s, _)| *s).collect()
     }
 }
 
@@ -74,17 +99,24 @@ pub struct FlagResolver {
 }
 
 impl FlagResolver {
-    pub fn new(idx: usize, value: Value, flag: Option<char>) -> Self {
+    pub fn new(idx: usize, value: Value, flag: Option<char>, supported_flags: &[char]) -> Self {
         let mut v = value;
-        if let Some(f) = flag {
-            if f == 'i' {
+        let mut f = flag;
+
+        if let Some(c) = flag {
+            // TODO: check the Values (eg: only strings ...)
+            if c == 'i' && supported_flags.contains(&c) {
                 v = Value::Text(v.to_string().to_ascii_uppercase());
+            } else {
+                // TODO: error?
+                f = None;
             }
         }
+
         Self {
             idx,
             value: v,
-            flag,
+            flag: f,
         }
     }
 

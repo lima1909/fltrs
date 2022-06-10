@@ -2,7 +2,7 @@
 use core::fmt::{Debug, Display};
 use core::str::FromStr;
 
-#[derive(PartialEq, PartialOrd, Debug)]
+#[derive(PartialEq, PartialOrd, Debug, Clone)]
 pub enum Value {
     Null,
     Bool(bool),
