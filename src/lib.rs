@@ -570,4 +570,15 @@ mod test {
 
         Ok(())
     }
+
+    #[test]
+    fn iter_str_one_of_case_intensitive() -> Result<()> {
+        let result: Vec<&str> = ["", "aBc", "xyz", "abC", ""]
+            .into_iter()
+            .filter(query(r#"one_of:i ["abc", "sdf"]"#)?)
+            .collect();
+        assert_eq!(vec!["aBc", "abC"], result);
+
+        Ok(())
+    }
 }

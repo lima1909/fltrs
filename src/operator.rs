@@ -22,7 +22,7 @@
 //!
 //! | flag | meaning          | example                             | hint                                                                                                                    |
 //! |------|------------------|-------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
-//! | `i`  | case insensitive |`=:i "ab"`<br /> (`ab, aB, Ab, AB`)  | is equivalent to a text comparison<br /> (greater and less for numbers does not work: 11 is less than 2 ==> "11" < "2") |
+//! | `i`  | case insensitive |`=:i "ab"`<br /> (`ab, aB, Ab, AB`)  | is equivalent to a text comparison<br /> (greater and less for numbers **does not work**: 11 is less than 2 ==> "11" < "2") |
 //!
 //!
 use crate::token::Op;
@@ -104,7 +104,7 @@ impl FlagResolver {
         if let Some(c) = flag {
             // TODO: check the Values (eg: only strings ...)
             if c == 'i' && supported_flags.contains(&c) {
-                v = Value::Text(v.to_string().to_ascii_uppercase());
+                v = v.to_uppercase();
             } else {
                 // TODO: error?
                 f = None;
