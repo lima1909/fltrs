@@ -78,11 +78,9 @@ impl<PR: PathResolver> Default for Operators<PR> {
 
 impl<PR: PathResolver> Operators<PR> {
     pub fn get(&self, op: &Op, idx: usize, v: Value) -> Result<Predicate<PR>> {
-        for (n, o) in &self.ops {
-            if n == &op.name {
-                let f = o.f;
-                return f(FlagResolver::new(idx, v, op.flag, &o.flags));
-            }
+        if let Some((_, o)) = self.ops.iter().find(|(name, _)| name == &op.name) {
+            let f = o.f;
+            return f(FlagResolver::new(idx, v, op.flag, &o.flags));
         }
         Err(FltrError(format!("invalid operation: '{}'", op)))
     }
