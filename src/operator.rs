@@ -19,12 +19,12 @@
 //! | `regex`       | regexpression (feature = "regex") | `x regex "[0-9]{2}"`           |  |
 //!
 //! ### Flags
-//! 
+//!
 //! | flag | meaning          | example                             | hint                                                                                                                    |
 //! |------|------------------|-------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
 //! | `i`  | case insensitive |`=:i "ab"`<br /> (`ab, aB, Ab, AB`)  | is equivalent to a text comparison<br /> (greater and less for numbers does not work: 11 is less than 2 ==> "11" < "2") |
-//! 
-//! 
+//!
+//!
 use crate::token::Op;
 use crate::value::Value;
 use crate::{Filterable, FltrError, PathResolver, Predicate, Result};

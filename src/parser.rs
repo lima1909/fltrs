@@ -239,7 +239,9 @@ pub(crate) fn value() -> impl FnMut(&mut Parser) -> Result<Value> {
             't' => Ok(Bool(map("true")(parser)?)),
             'f' => Ok(Bool(map("false")(parser)?)),
             'n' => null()(parser),
-            _ => Ok(Null),
+            _ => Err(parser.parse_err(&format!(
+                "'{c}' is not a valid value, expect number, text or bool value"
+            ))),
         },
         None => Ok(Null),
     }
@@ -264,7 +266,15 @@ pub(crate) fn null() -> impl FnMut(&mut Parser) -> Result<Value> {
 pub(crate) fn list() -> impl FnMut(&mut Parser) -> Result<Value> {
     |parser: &mut Parser| {
         parser.take("[");
+        parser.take_while(is_ws)?;
+
         let mut values = vec![];
+
+        // empty list: []
+        if parser.take("]") {
+            return Ok(List(values));
+        }
+
         loop {
             let v = iws(parser, value())?;
             values.push(v);
@@ -514,20 +524,19 @@ mod test {
         );
     }
 
-    #[test_case(" ", Null ; "space_NULL")]
-    #[test_case("null", Null ; "null")]
-    #[test_case("none", Null ; "none")]
-    #[test_case("NULL", Null ; "upper null")]
-    #[test_case("NONE", Null ; "upper NONE")]
-    #[test_case("blub", Null ; "blub_NULL")]
-    #[test_case("240", Int(240) ; "240")]
-    #[test_case("true", Bool(true) ; "true_val")]
-    #[test_case("false", Bool(false) ; "false_val")]
-    #[test_case(r#""false""#, Text("false".into()) ; "false_string_val")]
-    #[test_case(r#"'X'"#, Char('X'.into()) ; "X_char_val")]
-    fn value_check(input: &str, expect: Value) {
+    #[test_case("null" => Null ; "null")]
+    #[test_case("none" => Null ; "none")]
+    #[test_case("NULL" => Null ; "upper null")]
+    #[test_case("NONE" => Null ; "upper NONE")]
+    #[test_case("240" => Int(240) ; "240")]
+    #[test_case("true" => Bool(true) ; "true_val")]
+    #[test_case("false" => Bool(false) ; "false_val")]
+    #[test_case(r#""false""# => Text("false".into()) ; "false_string_val")]
+    #[test_case(r#"'X'"# => Char('X'.into()) ; "X_char_val")]
+    #[test_case(r#"[1]"# => List(vec![Int(1)]) ; "list_1")]
+    fn value_check(input: &str) -> Value {
         let mut p = Parser::new(input);
-        assert_eq!(expect, value()(&mut p).unwrap());
+        value()(&mut p).unwrap()
     }
 
     #[test_case("foo", ParseError {input: "foo".into(),location: Location { line: 1, column: 1},err_msg: "expected input: 'false' not found".into()} ; "foo not false")]
@@ -545,10 +554,10 @@ mod test {
     #[test_case(r#"[1, 2, 5]"# => List(vec![Int(1), Int(2), Int(5)]) ; "list_1_2_5")]
     #[test_case(r#"[1, 'A', true]"# => List(vec![Int(1), Char('A'), Bool(true)]) ; "list_1_A_true")]
     #[test_case(r#"["aA", "Bb"]"# => List(vec![Text("aA".into()), Text("Bb".into())]) ; "list_aA_Bb")]
-    #[test_case(r#"[ ]"# => List(vec![Null]) ; "list_empty_NULL")]
-    #[test_case(r#"[ , ]"# => List(vec![Null, Null]) ; "list_empty_NULL_NULL")]
-    #[test_case(r#"[ 1, ]"# => List(vec![Int(1), Null]) ; "list_1_empty_NULL")]
-    #[test_case(r#"[ , 1 ]"# => List(vec![Null, Int(1)]) ; "list_empty_NULL_1")]
+    #[test_case(r#"[ ]"# => List(vec![]) ; "empty list")]
+    #[test_case(r#"[ Null , null ]"# => List(vec![Null, Null]) ; "NULL_NULL_list")]
+    #[test_case(r#"[ 1, null ]"# => List(vec![Int(1), Null]) ; "1_NULL_list")]
+    #[test_case(r#"[ null , 1 ]"# => List(vec![Null, Int(1)]) ; "NULL_1_list")]
     fn list_value_check(input: &str) -> Value {
         let mut p = Parser::new(input);
         value()(&mut p).unwrap()
@@ -608,7 +617,6 @@ mod test {
     #[test_case("= ", Predicate{path: None, op: Op::from_str("="), value: Null}; "eq empty space")]
     #[test_case(r#"=:i "paul" "#, Predicate{path: None, op: Op::new("=", Some('i')), value: Text("paul".into())}; "eq case insensitive paul")]
     #[test_case(r#"=:: "paul" "#, Predicate{path: None, op: Op::new("=", Some(':')), value: Text("paul".into())}; "eq:: paul")]
-    // #[test_case(r#"=::i "paul" "#, Predicate{path: None, op: Op::new("=", Some(':')), value: Text("paul".into())}; "eq invalid paul")]
     fn predicate_check(input: &str, expect: Predicate) {
         let mut p = Parser::new(input);
         assert_eq!(expect, predicate()(&mut p).unwrap());
@@ -616,7 +624,7 @@ mod test {
 
     #[test_case("age 3", ParseError {input: "age 3".into(),location: Location { line: 1, column: 4},err_msg: "'3' is not a valid filter operation".into()} ; "age 3")]
     #[test_case(r#"name = "Paul "#, ParseError {input: r#"name = "Paul "#.into(),location: Location { line: 1, column: 13},err_msg: "missing closing character: '\"'".into()} ; r#"name = "Paul "#)]
-    // #[test_case(r#"name =::i "Paul "#, ParseError {input: r#"name =::i "Paul "#.into(),location: Location { line: 1, column: 13},err_msg: "missing closing character: '\"'".into()} ; r#"name =:i "Paul "#)]
+    #[test_case(r#"name =::i "Paul "#, ParseError {input: r#"name =::i "Paul "#.into(),location: Location { line: 1, column: 8},err_msg: "'i' is not a valid value, expect number, text or bool value".into()} ; r#"name =:i "Paul "#)]
     fn predicate_err(input: &str, err: ParseError) {
         let mut p = Parser::new(input);
         assert_eq!(err, predicate()(&mut p).err().unwrap());

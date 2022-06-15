@@ -38,7 +38,7 @@
 //!         .collect();
 //!
 //! assert_eq!(vec!["Inge", "Petra", "Peter"], result);
-//! 
+//!
 //! // or case insensitive (`contains` with flag: `i`)
 //! let result: Vec<_> = ["Inge", "Petra", "Paul", "Egon", "Peter"]
 //!         .into_iter()
