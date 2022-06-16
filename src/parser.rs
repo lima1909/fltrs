@@ -243,7 +243,7 @@ pub(crate) fn value() -> impl FnMut(&mut Parser) -> Result<Value> {
                 "'{c}' is not a valid value, expect number, text or bool value"
             ))),
         },
-        None => Ok(Null),
+        None => Err(parser.parse_err(&format!("no valid value found and no input left"))),
     }
 }
 
@@ -273,6 +273,8 @@ pub(crate) fn list() -> impl FnMut(&mut Parser) -> Result<Value> {
         // empty list: []
         if parser.take("]") {
             return Ok(List(values));
+        } else if parser.is_done() {
+            return Err(parser.parse_err("missing closing: ']'"));
         }
 
         loop {
@@ -280,8 +282,7 @@ pub(crate) fn list() -> impl FnMut(&mut Parser) -> Result<Value> {
             values.push(v);
             if parser.take("]") {
                 break;
-            }
-            if !parser.take(",") {
+            } else if !parser.take(",") {
                 return Err(parser.parse_err("expected comma as delimiter in List-Value"));
             }
         }
@@ -558,14 +559,16 @@ mod test {
     #[test_case(r#"[ Null , null ]"# => List(vec![Null, Null]) ; "NULL_NULL_list")]
     #[test_case(r#"[ 1, null ]"# => List(vec![Int(1), Null]) ; "1_NULL_list")]
     #[test_case(r#"[ null , 1 ]"# => List(vec![Null, Int(1)]) ; "NULL_1_list")]
+    #[test_case(r#"[ [1]  ,   2 ]"# => List(vec![List(vec![Int(1)]), Int(2)]) ; "nested_list")]
     fn list_value_check(input: &str) -> Value {
         let mut p = Parser::new(input);
         value()(&mut p).unwrap()
     }
 
-    #[test_case(r#"[ "# => ParseError {input: "[ ".into(),location: Location { line: 1, column: 2},err_msg: "expected comma as delimiter in List-Value".into()} ; "not closing bracket")]
+    #[test_case(r#"[ "# => ParseError {input: "[ ".into(),location: Location { line: 1, column: 2},err_msg: "missing closing: ']'".into()} ; "not closing bracket")]
     #[test_case(r#"[ 1 "# => ParseError {input: "[ 1 ".into(),location: Location { line: 1, column: 4},err_msg: "expected comma as delimiter in List-Value".into()} ; "not closing bracket with value")]
-    #[test_case(r#"[ 1, "# => ParseError {input: "[ 1, ".into(),location: Location { line: 1, column: 5},err_msg: "expected comma as delimiter in List-Value".into()} ; "not closing bracket with value and comma")]
+    #[test_case(r#"[ 1, "# => ParseError {input: "[ 1, ".into(),location: Location { line: 1, column: 5},err_msg: "no valid value found and no input left".into()} ; "not closing bracket with value and comma")]
+    #[test_case(r#"[ [ 1, "# => ParseError {input: "[ [ 1, ".into(),location: Location { line: 1, column: 7},err_msg: "no valid value found and no input left".into()} ; "two open brackets")]
     fn list_value_err(input: &str) -> ParseError {
         let mut p = Parser::new(input);
         value()(&mut p).err().unwrap()
@@ -611,10 +614,8 @@ mod test {
     #[test_case("= 7", Predicate{path: None, op: Op::from_str("="), value: Int(7)}; "eq 7")]
     #[test_case("name len 3", Predicate{path: Some(String::from("name")), op: Op::from_str("len"), value: Int(3)}; "name len 3")]
     #[test_case("name len3", Predicate{path: Some(String::from("name")), op: Op::from_str("len"), value: Int(3)}; "name len3")]
-    #[test_case("is_empty", Predicate{path: None, op: Op::from_str("is_empty"), value: Null}; "is_empty")]
-    #[test_case("name is_empty", Predicate{path: Some(String::from("name")), op: Op::from_str("is_empty"), value: Null}; "name is_empty")]
-    #[test_case("=", Predicate{path: None, op: Op::from_str("="), value: Null}; "eq empty")]
-    #[test_case("= ", Predicate{path: None, op: Op::from_str("="), value: Null}; "eq empty space")]
+    #[test_case(r#" = "" "#, Predicate{path: None, op: Op::from_str("="), value: Text("".into())}; "eq empty string")]
+    #[test_case(r#" name = "" "#, Predicate{path: Some(String::from("name")), op: Op::from_str("="), value: Text("".into())}; "name eq empty string")]
     #[test_case(r#"=:i "paul" "#, Predicate{path: None, op: Op::new("=", Some('i')), value: Text("paul".into())}; "eq case insensitive paul")]
     #[test_case(r#"=:: "paul" "#, Predicate{path: None, op: Op::new("=", Some(':')), value: Text("paul".into())}; "eq:: paul")]
     fn predicate_check(input: &str, expect: Predicate) {
@@ -637,8 +638,8 @@ mod test {
         assert_eq!(expect, filter()(&mut p).unwrap());
     }
 
-    #[test_case("not (is_empty)", "not (is_empty NULL)")]
-    #[test_case("=", "= NULL")]
+    #[test_case(r#"not (= "")"#, r#"not (= )"#)]
+    #[test_case("= 7", "= 7")]
     #[test_case("= true or = false", "= true or = false")]
     #[test_case("= true and != false", "= true and != false")]
     #[test_case("name = 'X' and name != 'Y'", "name = X and name != Y")]

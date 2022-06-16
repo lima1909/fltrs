@@ -363,13 +363,11 @@ mod test {
     #[test_case(" > 1 " => vec![Some(2), Some(3)] ; "> 1" )]
     #[test_case(" one_of [1, 2] " => vec![Some(1), Some(2)] ; "one_of 1 2" )]
     #[test_case(" one_of [1, none] " => vec![None, Some(1), None, None] ; "one_of 1 none" )]
-    #[test_case(" = " => vec![None, None, None] ; "eq" )]
     #[test_case(" = none" => vec![None, None, None] ; "eq none" )]
     #[test_case(" = None" => vec![None, None, None] ; "eq upper None" )]
     #[test_case(" = null" => vec![None, None, None] ; "eq null" )]
     #[test_case(" = Null" => vec![None, None, None] ; "eq upper Null" )]
-    #[test_case(" is_empty " => vec![None, None, None] ; "is_empty")]
-    #[test_case(" not is_empty" => vec![Some(1), Some(2), Some(3)] ; "not is_empty" )]
+    #[test_case(" not = none " => vec![Some(1), Some(2), Some(3)] ; "not none" )]
     #[test_case(" not < 2" => vec![None, None, Some(2), Some(3), None] ; "not less 2" )]
     fn iter_option(query_str: &str) -> Vec<Option<i32>> {
         let result: Vec<Option<i32>> = [None, Some(1), None, Some(2), Some(3), None]
@@ -466,12 +464,6 @@ mod test {
     fn iter_str_empty() -> Result<()> {
         let result: Vec<&str> = ["", "abc", "", "xyz", ""]
             .into_iter()
-            .filter(query("is_empty")?)
-            .collect();
-        assert_eq!(vec!["", "", ""], result);
-
-        let result: Vec<&str> = ["", "abc", "", "xyz", ""]
-            .into_iter()
             .filter(query(r#"= """#)?)
             .collect();
         assert_eq!(vec!["", "", ""], result);
@@ -483,13 +475,19 @@ mod test {
     fn iter_str_not_empty() -> Result<()> {
         let result: Vec<&str> = ["", "abc", "", "xyz", ""]
             .into_iter()
-            .filter(query("not is_empty")?)
+            .filter(query(r#"not = "" "#)?)
             .collect();
         assert_eq!(vec!["abc", "xyz"], result);
 
         let result: Vec<&str> = ["", "abc", "", "xyz", ""]
             .into_iter()
             .filter(query(r#"not ( = "")"#)?)
+            .collect();
+        assert_eq!(vec!["abc", "xyz"], result);
+
+        let result: Vec<&str> = ["", "abc", "", "xyz", ""]
+            .into_iter()
+            .filter(query(r#"!= "" "#)?)
             .collect();
         assert_eq!(vec!["abc", "xyz"], result);
 

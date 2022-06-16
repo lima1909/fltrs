@@ -4,19 +4,18 @@
 //!
 //! | operator      | meaning                           | example                        | supported flags |
 //! |---------------|-----------------------------------|--------------------------------|-----------------|
-//! | `=` or `==`   | equal                             | `= 5` or `name = "Peter"`      | i |
-//! | `!=`          | not equal                         | `!= 5` or `name != "Peter"`    | i |
-//! | `<`           | less                              | `< 5`                          | i |
-//! | `<=`          | less equal                        | `<= 5`                         | i |
-//! | `>`           | greater                           | `> 5`                          | i |
-//! | `>=`          | greater equal                     | `>= 5`                         | i |
-//! | `len`         | length of an string               | `name len 5`                   |  |
-//! | `is_empty`    | string is empty                   | `name is_empty` or `name = ""` |  |
-//! | `contains`    | string contains other string/char | `name contains "Pe"`           | i |
-//! | `starts_with` | string starts with string/char    | `name starts_with "Pe"`        | i |
-//! | `ends_with`   | string ends with string/char      | `name ends_with "er"`          | i |
-//! | `one_of`      | one element from given list       | `x one_of [1, 3, 7]`           | i |
-//! | `regex`       | regexpression (feature = "regex") | `x regex "[0-9]{2}"`           |  |
+//! | `=` or `==`   | equal                             | `= 5` or `name = "Peter"`      | i               |
+//! | `!=`          | not equal                         | `!= 5` or `name != "Peter"`    | i               |
+//! | `<`           | less                              | `< 5`                          | i               |
+//! | `<=`          | less equal                        | `<= 5`                         | i               |
+//! | `>`           | greater                           | `> 5`                          | i               |
+//! | `>=`          | greater equal                     | `>= 5`                         | i               |
+//! | `len`         | length of an string               | `name len 5`                   |                 |
+//! | `contains`    | string contains other string/char | `name contains "Pe"`           | i               |
+//! | `starts_with` | string starts with string/char    | `name starts_with "Pe"`        | i               |
+//! | `ends_with`   | string ends with string/char      | `name ends_with "er"`          | i               |
+//! | `one_of`      | one element from given list       | `x one_of [1, 3, 7]`           | i               |
+//! | `regex`       | regexpression (feature = "regex") | `x regex "[0-9]{2}"`           |                 |
 //!
 //! ### Flags
 //!
@@ -64,7 +63,6 @@ impl<PR: PathResolver> Default for Operators<PR> {
                 (">=", Operator::new(ge, &['i'], &[])),
                 (">", Operator::new(gt, &['i'], &[])),
                 ("len", Operator::new(len, &[], &[])),
-                ("is_empty", Operator::new(is_empty, &[], &[])),
                 ("contains", Operator::new(contains, &['i'], &[])),
                 ("starts_with", Operator::new(starts_with, &['i'], &[])),
                 ("ends_with", Operator::new(ends_with, &['i'], &[])),
@@ -164,15 +162,6 @@ fn len<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
     Ok(Box::new(move |pr| {
         fr.handle(pr, |f, v| match v {
             Value::Int(l) => f.as_string().len() == *l as usize,
-            _ => false,
-        })
-    }))
-}
-
-fn is_empty<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| {
-        fr.handle(pr, |f, v| match v {
-            Value::Null => f.as_string().is_empty(),
             _ => false,
         })
     }))
