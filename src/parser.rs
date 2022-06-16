@@ -243,7 +243,7 @@ pub(crate) fn value() -> impl FnMut(&mut Parser) -> Result<Value> {
                 "'{c}' is not a valid value, expect number, text or bool value"
             ))),
         },
-        None => Err(parser.parse_err(&format!("no valid value found and no input left"))),
+        None => Err(parser.parse_err("no valid value found and no input left")),
     }
 }
 
