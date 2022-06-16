@@ -369,6 +369,7 @@ mod test {
     #[test_case(" = Null" => vec![None, None, None] ; "eq upper Null" )]
     #[test_case(" not = none " => vec![Some(1), Some(2), Some(3)] ; "not none" )]
     #[test_case(" not < 2" => vec![None, None, Some(2), Some(3), None] ; "not less 2" )]
+    #[test_case(" != 2" => vec![None, Some(1), None, Some(3), None] ; "neq 2" )]
     fn iter_option(query_str: &str) -> Vec<Option<i32>> {
         let result: Vec<Option<i32>> = [None, Some(1), None, Some(2), Some(3), None]
             .into_iter()
