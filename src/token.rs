@@ -1,9 +1,6 @@
-#![allow(dead_code)] // TODO: remove this
-
 use crate::value::Value;
 use core::fmt::{Debug, Display};
 
-// TODO: remove 'pub', temporary for benchmarking
 #[derive(PartialEq, PartialOrd, Debug)]
 pub struct Exp {
     index: usize,
@@ -105,12 +102,6 @@ pub(crate) struct Predicate {
     pub(crate) path: Option<String>,
     pub(crate) op: Op,
     pub(crate) value: Value,
-}
-
-impl Predicate {
-    pub(crate) fn has_path(&self) -> bool {
-        self.path.is_some()
-    }
 }
 
 impl Display for Predicate {

@@ -189,7 +189,7 @@ pub(crate) fn op() -> impl FnMut(&mut Parser) -> Result<Op> {
             if parser.take(":") {
                 return Ok(Op::new(&op, parser.s.take_one_char()));
             }
-            return Ok(Op::new(&op, None));
+            return Ok(Op::from_str(&op));
         }
         Err(parser.parse_err(&format!("'{op_str}' is not a valid filter operation")))
     }
