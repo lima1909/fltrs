@@ -39,7 +39,7 @@ impl AsString for Value {
             Value::Char(v) => v.to_string(),
             Value::Text(v) => v.to_string(),
             Value::List(vs) => vs
-                .into_iter()
+                .iter()
                 .fold(String::new(), |acc, v| acc + &v.as_string() + " "),
         }
     }
