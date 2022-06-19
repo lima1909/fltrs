@@ -30,19 +30,16 @@ use crate::{Filterable, FltrError, PathResolver, Predicate, Result};
 
 pub type OperatorFn<PR> = fn(fr: FlagResolver) -> Result<Predicate<PR>>;
 
-#[allow(dead_code)] //TODO: remove
 pub struct Operator<PR> {
     f: OperatorFn<PR>,
     flags: Vec<char>,
-    values: Vec<Value>,
 }
 
 impl<PR> Operator<PR> {
-    pub fn new(f: OperatorFn<PR>, flags: &[char], values: &[Value]) -> Self {
+    pub fn new(f: OperatorFn<PR>, flags: &[char]) -> Self {
         Self {
             f,
             flags: Vec::from(flags),
-            values: Vec::from(values),
         }
     }
 }
@@ -55,20 +52,20 @@ impl<PR: PathResolver> Default for Operators<PR> {
     fn default() -> Self {
         Self {
             ops: vec![
-                ("==", Operator::new(eq, &['i'], &[])),
-                ("=", Operator::new(eq, &['i'], &[])),
-                ("!=", Operator::new(ne, &['i'], &[])),
-                ("<=", Operator::new(le, &['i'], &[])),
-                ("<", Operator::new(lt, &['i'], &[])),
-                (">=", Operator::new(ge, &['i'], &[])),
-                (">", Operator::new(gt, &['i'], &[])),
-                ("len", Operator::new(len, &[], &[])),
-                ("contains", Operator::new(contains, &['i'], &[])),
-                ("starts_with", Operator::new(starts_with, &['i'], &[])),
-                ("ends_with", Operator::new(ends_with, &['i'], &[])),
-                ("one_of", Operator::new(one_of, &['i'], &[])),
+                ("==", Operator::new(eq, &['i'])),
+                ("=", Operator::new(eq, &['i'])),
+                ("!=", Operator::new(ne, &['i'])),
+                ("<=", Operator::new(le, &['i'])),
+                ("<", Operator::new(lt, &['i'])),
+                (">=", Operator::new(ge, &['i'])),
+                (">", Operator::new(gt, &['i'])),
+                ("len", Operator::new(len, &[])),
+                ("contains", Operator::new(contains, &['i'])),
+                ("starts_with", Operator::new(starts_with, &['i'])),
+                ("ends_with", Operator::new(ends_with, &['i'])),
+                ("one_of", Operator::new(one_of, &['i'])),
                 #[cfg(feature = "regex")]
-                ("regex", Operator::new(regex, &[], &[])),
+                ("regex", Operator::new(regex, &[])),
             ],
         }
     }
@@ -77,8 +74,8 @@ impl<PR: PathResolver> Default for Operators<PR> {
 impl<PR: PathResolver> Operators<PR> {
     pub fn get(&self, op: &Op, idx: usize, v: Value) -> Result<Predicate<PR>> {
         if let Some((_, o)) = self.ops.iter().find(|(name, _)| name == &op.name) {
-            let f = o.f;
-            return f(FlagResolver::new(idx, v, op.flag, &o.flags));
+            let create = o.f;
+            return create(FlagResolver::new(idx, v, op, &o.flags)?);
         }
         Err(FltrError(format!("invalid operation: '{}'", op)))
     }
@@ -95,25 +92,28 @@ pub struct FlagResolver {
 }
 
 impl FlagResolver {
-    pub fn new(idx: usize, value: Value, flag: Option<char>, supported_flags: &[char]) -> Self {
-        let mut v = value;
-        let mut f = flag;
-
-        if let Some(c) = flag {
+    pub fn check_flag(value: Value, op: &Op, supported_flags: &[char]) -> Result<Value> {
+        if let Some(c) = op.flag {
             // TODO: check the Values (eg: only strings ...)
             if c == 'i' && supported_flags.contains(&c) {
-                v = v.to_uppercase();
+                return Ok(value.to_uppercase());
             } else {
-                // TODO: error?
-                f = None;
+                return Err(FltrError(format!(
+                    "the flag: '{c}' is for operator '{}' not supported",
+                    op.name
+                )));
             }
         }
 
-        Self {
+        Ok(value)
+    }
+
+    pub fn new(idx: usize, value: Value, op: &Op, supported_flags: &[char]) -> Result<Self> {
+        Ok(Self {
             idx,
-            value: v,
-            flag: f,
-        }
+            value: FlagResolver::check_flag(value, op, supported_flags)?,
+            flag: op.flag,
+        })
     }
 
     pub fn handle<PR: PathResolver, Handler: Fn(&dyn Filterable, &Value) -> bool>(

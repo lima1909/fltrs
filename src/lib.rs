@@ -326,7 +326,7 @@ impl<PR: PathResolver + 'static> Query<PR> {
     pub fn operators(mut self, ops: &[(&'static str, OperatorFn<PR>)]) -> Self {
         self.ops.ops = ops
             .iter()
-            .map(|(n, op)| (*n, Operator::new(*op, &[], &[])))
+            .map(|(n, op)| (*n, Operator::new(*op, &[])))
             .collect();
         self
     }
@@ -530,11 +530,11 @@ mod test {
 
     #[test]
     fn iter_ends_with_case_intensitive() -> Result<()> {
-        let result: Vec<&str> = ["abc", "aBc", "xyz", "Xyz", ""]
+        let result: Vec<&str> = ["abC", "aBc", "xyz", "Xyz", ""]
             .into_iter()
             .filter(query(r#"ends_with:i "bc""#)?)
             .collect();
-        assert_eq!(vec!["abc", "aBc"], result);
+        assert_eq!(vec!["abC", "aBc"], result);
 
         Ok(())
     }
@@ -560,14 +560,11 @@ mod test {
     }
 
     #[test]
-    fn iter_len_case_intensitive() -> Result<()> {
-        let result: Vec<_> = ["abcd", "aBc", "xy", "Xyz", ""]
-            .into_iter()
-            .filter(query("len:i 3")?)
-            .collect();
-        assert_eq!(vec!["aBc", "Xyz"], result);
-
-        Ok(())
+    fn iter_len_case_intensitive_err() {
+        assert_eq!(
+            query::<&str>("len:i 3").err().unwrap(),
+            FltrError("the flag: 'i' is for operator 'len' not supported".into())
+        )
     }
 
     #[test]
