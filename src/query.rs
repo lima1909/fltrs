@@ -223,8 +223,8 @@ mod test {
         (query(exp, &Operators::default()).unwrap())(&car)
     }
 
-    #[test_case(r#"= "bmw""#, FltrError("invalid path: '' for value: 'bmw'".into()); "empty path")]
-    #[test_case(r#"foo = "bmw""#, FltrError("invalid path: 'foo' for value: 'bmw'".into()); "invalid path")]
+    #[test_case(r#"= "bmw""#, FltrError(r#"invalid path: '' for value: '"bmw"'"#.into()); "empty path")]
+    #[test_case(r#"foo = "bmw""#, FltrError(r#"invalid path: 'foo' for value: '"bmw"'"#.into()); "invalid path")]
     fn query_err(input: &str, err: FltrError) {
         let exp = parse(input).unwrap();
         assert_eq!(err, query::<Car>(exp, &Operators::default()).err().unwrap());

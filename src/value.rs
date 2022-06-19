@@ -1,9 +1,11 @@
 //! The value mod contains different value types, which are the result of the parse process.
+use crate::AsString;
 use core::fmt::{Debug, Display};
 use core::str::FromStr;
 
 #[derive(PartialEq, PartialOrd, Debug, Clone)]
 pub enum Value {
+    /// means an empty Value (by [`std::option::Option`]: None)
     Null,
     Bool(bool),
     Int(i32),
@@ -20,13 +22,28 @@ impl Display for Value {
             Value::Bool(v) => write!(fm, "{}", v),
             Value::Int(v) => write!(fm, "{}", v),
             Value::Float(v) => write!(fm, "{}", v),
-            Value::Char(v) => write!(fm, "{}", v),
-            Value::Text(v) => write!(fm, "{}", v),
+            Value::Char(v) => write!(fm, "'{}'", v),
+            Value::Text(v) => write!(fm, r#""{}""#, v),
             Value::List(v) => write!(fm, "{:?}", v),
         }
     }
 }
 
+impl AsString for Value {
+    fn as_string(&self) -> String {
+        match self {
+            Value::Null => "NULL".into(),
+            Value::Bool(v) => v.to_string(),
+            Value::Int(v) => v.to_string(),
+            Value::Float(v) => v.to_string(),
+            Value::Char(v) => v.to_string(),
+            Value::Text(v) => v.to_string(),
+            Value::List(vs) => vs
+                .into_iter()
+                .fold(String::new(), |acc, v| acc + &v.as_string() + " "),
+        }
+    }
+}
 #[inline]
 pub(crate) fn str_to_number(s: &str) -> core::result::Result<Value, String> {
     if s.contains('.') {
@@ -43,7 +60,7 @@ impl Value {
         match self {
             Value::Char(mut c) => {
                 c.make_ascii_uppercase();
-                Value::Text(c.to_string())
+                Value::Text(c.as_string())
             }
             Value::Text(mut t) => {
                 t.make_ascii_uppercase();
@@ -54,7 +71,7 @@ impl Value {
                 Value::List(l)
             }
             _ => {
-                let mut s = self.to_string();
+                let mut s = self.as_string();
                 s.make_ascii_uppercase();
                 Value::Text(s)
             }
@@ -179,7 +196,7 @@ mod test {
         assert!(10 > Value::Int(9));
         assert!(10 < Value::Int(11));
 
-        assert_eq!(10.to_string(), Value::Int(10).to_string());
+        assert_eq!(10.as_string(), Value::Int(10).as_string());
 
         assert!(10u128 == Value::Int(10));
         assert!(10 as u8 > Value::Int(9));
@@ -198,13 +215,13 @@ mod test {
         assert!(10.2 as f32 > Value::Float(9.3));
         assert!((10.2 as f32) < Value::Float(11.3));
 
-        assert_eq!(10.2f32.to_string(), Value::Float(10.2).to_string());
+        assert_eq!(10.2f32.as_string(), Value::Float(10.2).as_string());
 
         assert!(10.2 == Value::Float(10.2));
         assert!(10.2 > Value::Float(9.3));
         assert!(10.2 < Value::Float(11.3));
 
-        assert_eq!(10.2.to_string(), Value::Float(10.2).to_string());
+        assert_eq!(10.2.as_string(), Value::Float(10.2).as_string());
 
         assert!(10.2 == Value::Float(10.2));
         assert!(10.2 > Value::Float(9.3));
@@ -217,7 +234,7 @@ mod test {
         assert!(true > false);
         assert!(true > Value::Bool(false));
 
-        assert_eq!(false.to_string(), Value::Bool(false).to_string());
+        assert_eq!(false.as_string(), Value::Bool(false).as_string());
     }
 
     #[test]
@@ -231,7 +248,7 @@ mod test {
 
         assert!("x" > Value::Text("X".into()));
 
-        assert_eq!("foo".to_string(), Value::Text("foo".into()).to_string());
+        assert_eq!("foo".as_string(), Value::Text("foo".into()).as_string());
     }
 
     #[test]
@@ -241,7 +258,8 @@ mod test {
         assert!('x' > 'X');
         assert!('Y' > Value::Char('X'));
 
-        assert_eq!('Z'.to_string(), Value::Char('Z').to_string());
+        assert_eq!("'Z'", Value::Char('Z').to_string());
+        assert_eq!("Z", Value::Char('Z').as_string());
     }
 
     #[test]
@@ -272,5 +290,16 @@ mod test {
     #[test_case(Value::List(vec![Value::List(vec![Value::Text("x".into()), Value::Text("y".into())])])  => Value::List(vec![Value::List(vec![Value::Text("X".into()), Value::Text("Y".into())])]))]
     fn to_uppercase(v: Value) -> Value {
         v.to_uppercase()
+    }
+
+    #[test_case(Value::Text("A".into()) => String::from("A") ; "A" )]
+    #[test_case(Value::Char('c') => String::from("c") ; "c" )]
+    #[test_case(Value::Bool(true) => String::from("true") ; "true " )]
+    #[test_case(Value::Int(42) => String::from("42") ; "42" )]
+    #[test_case(Value::Float(4.2) => String::from("4.2") ; "4.2" )]
+    #[test_case(Value::List(vec![Value::Text("42".into())]) => String::from("42 "))]
+    #[test_case(Value::List(vec![Value::Int(42), Value::Int(24)]) => String::from("42 24 "))]
+    fn as_string(v: Value) -> String {
+        v.as_string()
     }
 }

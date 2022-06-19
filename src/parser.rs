@@ -382,6 +382,7 @@ pub(crate) fn is_not_ws(_pos: usize, c: &char) -> core::result::Result<bool, &st
 mod test {
     use super::*;
     use crate::error::{Location, ParseError};
+    use crate::AsString;
     use test_case::test_case;
 
     #[test]
@@ -491,8 +492,8 @@ mod test {
         assert_eq!(err, number()(&mut p).err().unwrap());
     }
 
-    #[test_case(r#""yeh""#, |v: Value| -> Value { str_to_number(&v.to_string()).unwrap() }=>Value::Text("yeh".into()) ; "no as value")]
-    #[test_case(r#""123" as to_val"#, |v: Value| -> Value { str_to_number(&v.to_string()).unwrap() } => Value::Int(123) ; "text as Int32")]
+    #[test_case(r#""yeh""#, |v: Value| -> Value { Value::Text(v.as_string()) } => Value::Text("yeh".into()) ; "no as value")]
+    #[test_case(r#""123" as to_val"#, |v: Value| -> Value { str_to_number(&v.as_string()).unwrap() } => Value::Int(123) ; "text as Int32")]
     #[test_case(r#"123 AS to_val"#, |v: Value| -> Value { if let Value::Int(i) = v { Value::Int(i * 2) } else { Value::Int(0) } } => Value::Int(246) ; "double 123")]
     fn value_with_as_check(input: &str, as_val_fn: AsValueFn) -> Value {
         let mut p = Parser::new(input);
@@ -500,7 +501,7 @@ mod test {
         value_with_as()(&mut p).unwrap()
     }
 
-    #[test_case(r#""123" as u32"#, ParseError {input: r#""123" as u32"#.into(),location: Location { line: 1, column: 12},err_msg: "unknown function: 'u32' for converting the value: '123'".into()} ; "240 as i8")]
+    #[test_case(r#""123" as u32"#, ParseError {input: r#""123" as u32"#.into(),location: Location { line: 1, column: 12},err_msg: r#"unknown function: 'u32' for converting the value: '"123"'"#.into()} ; "240 as i8")]
     fn value_with_as_err(input: &str, err: ParseError) {
         let mut p = Parser::new(input);
         assert_eq!(err, value_with_as()(&mut p).err().unwrap());
@@ -638,14 +639,14 @@ mod test {
         assert_eq!(expect, filter()(&mut p).unwrap());
     }
 
-    #[test_case(r#"not (= "")"#, r#"not (= )"#)]
+    #[test_case(r#"not (= "")"#, r#"not (= "")"#)]
     #[test_case("= 7", "= 7")]
     #[test_case("= true or = false", "= true or = false")]
     #[test_case("= true and != false", "= true and != false")]
-    #[test_case("name = 'X' and name != 'Y'", "name = X and name != Y")]
-    #[test_case("= 'W'  and !=  'Z'", "= W and != Z")]
-    #[test_case("= 'X' or = 'y'  and !=  'Z'", "= X or = y and != Z")]
-    #[test_case("= 'A' and = 'B'  or !=  'C'", "= A and = B or != C")]
+    #[test_case("name = 'X' and name != 'Y'", "name = 'X' and name != 'Y'")]
+    #[test_case("= 'W'  and !=  'Z'", "= 'W' and != 'Z'")]
+    #[test_case("= 'X' or = 'y'  and !=  'Z'", "= 'X' or = 'y' and != 'Z'")]
+    #[test_case("= 'A' and = 'B'  or !=  'C'", "= 'A' and = 'B' or != 'C'")]
     #[test_case("= 1 and = 2 and = 3  or !=  4", "= 1 and = 2 and = 3 or != 4")]
     #[test_case("= 1  or =   2 or =   3  and !=  4", "= 1 or = 2 or = 3 and != 4")]
     fn parse_check(input: &str, display: &str) {
@@ -657,7 +658,7 @@ mod test {
     #[test_case("not (= true)", "not (= true)")]
     #[test_case("NOt (= false)", "not (= false)")]
     #[test_case("not(= true and != false)", "not (= true and != false)")]
-    #[test_case("noT(name = 'X' and name != 'Y')", "not (name = X and name != Y)")]
+    #[test_case("noT(name = 'X' and name != 'Y')", "not (name = 'X' and name != 'Y')")]
     #[test_case(
         "= false and not(= true or != false)",
         "= false and not (= true or != false)"
@@ -697,7 +698,7 @@ mod test {
 
     #[test_case("(= true)", "(= true)")]
     #[test_case("(= true and != false)", "(= true and != false)")]
-    #[test_case("(name = 'X' and name != 'Y')", "(name = X and name != Y)")]
+    #[test_case("(name = 'X' and name != 'Y')", "(name = 'X' and name != 'Y')")]
     #[test_case("= false and (= true or != false)", "= false and (= true or != false)")]
     #[test_case("(= true or != false) and = false", "(= true or != false) and = false")]
     fn parse_nested_check(input: &str, display: &str) {

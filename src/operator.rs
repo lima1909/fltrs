@@ -210,7 +210,9 @@ fn one_of<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
 
 #[cfg(feature = "regex")]
 fn regex<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
-    let rg = regex::Regex::new(&fr.value.to_string()).or_else(|e| Err(FltrError(e.to_string())))?;
+    use crate::AsString;
+
+    let rg = regex::Regex::new(&fr.value.as_string()).or_else(|e| Err(FltrError(e.to_string())))?;
     Ok(Box::new(move |pr| {
         fr.handle(pr, |f, _v| rg.is_match(&f.as_string()))
     }))
