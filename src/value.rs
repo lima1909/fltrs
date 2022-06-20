@@ -56,25 +56,21 @@ pub(crate) fn str_to_number(s: &str) -> core::result::Result<Value, String> {
 }
 
 impl Value {
-    pub fn to_uppercase(self) -> Value {
+    pub fn to_uppercase(self) -> (Value, bool) {
         match self {
             Value::Char(mut c) => {
                 c.make_ascii_uppercase();
-                Value::Text(c.as_string())
+                (Value::Text(c.as_string()), true)
             }
             Value::Text(mut t) => {
                 t.make_ascii_uppercase();
-                Value::Text(t)
+                (Value::Text(t), true)
             }
             Value::List(l) => {
-                let l = l.into_iter().map(|v| v.to_uppercase()).collect();
-                Value::List(l)
+                let l = l.into_iter().map(|v| v.to_uppercase().0).collect();
+                (Value::List(l), true)
             }
-            _ => {
-                let mut s = self.as_string();
-                s.make_ascii_uppercase();
-                Value::Text(s)
-            }
+            _ => (self, false),
         }
     }
 }
@@ -281,15 +277,16 @@ mod test {
     #[test_case(Value::Text("7".into()) => Value::Text("7".into()))]
     #[test_case(Value::Char('a') => Value::Text("A".into()); "Char: a -> A")]
     #[test_case(Value::Char('A') => Value::Text("A".into()))]
-    #[test_case(Value::Bool(true) => Value::Text("TRUE".into()))]
-    #[test_case(Value::Int(42) => Value::Text("42".into()))]
-    #[test_case(Value::Float(4.2) => Value::Text("4.2".into()))]
+    #[test_case(Value::Bool(true) => Value::Bool(true))]
+    #[test_case(Value::Int(42) => Value::Int(42))]
+    #[test_case(Value::Float(4.2) => Value::Float(4.2))]
     #[test_case(Value::List(vec![Value::Text("42".into())]) => Value::List(vec![Value::Text("42".into())]))]
     #[test_case(Value::List(vec![Value::Text("x".into()), Value::Text("y".into())]) => Value::List(vec![Value::Text("X".into()), Value::Text("Y".into())]))]
     #[test_case(Value::List(vec![Value::Text("x_7".into()), Value::Text(" y ".into())]) => Value::List(vec![Value::Text("X_7".into()), Value::Text(" Y ".into())]))]
     #[test_case(Value::List(vec![Value::List(vec![Value::Text("x".into()), Value::Text("y".into())])])  => Value::List(vec![Value::List(vec![Value::Text("X".into()), Value::Text("Y".into())])]))]
+    #[test_case(Value::List(vec![Value::Text("x".into()), Value::Int(7)]) => Value::List(vec![Value::Text("X".into()), Value::Int(7)]))]
     fn to_uppercase(v: Value) -> Value {
-        v.to_uppercase()
+        v.to_uppercase().0
     }
 
     #[test_case(Value::Text("A".into()) => String::from("A") ; "A" )]

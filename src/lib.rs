@@ -326,7 +326,7 @@ impl<PR: PathResolver + 'static> Query<PR> {
     pub fn operators(mut self, ops: &[(&'static str, OperatorFn<PR>)]) -> Self {
         self.ops.ops = ops
             .iter()
-            .map(|(n, op)| (*n, Operator::new(*op, &[])))
+            .map(|(n, op)| Operator::new(n, *op, &[]))
             .collect();
         self
     }
@@ -552,9 +552,8 @@ mod test {
 
     #[test]
     fn iter_greater_int_case_intensitive() -> Result<()> {
-        // 11 is less than 2 ==> "11" < "2" !!!
         let result: Vec<_> = [1, 2, 3, 11].into_iter().filter(query(">:i 2")?).collect();
-        assert_eq!(vec![3], result);
+        assert_eq!(vec![3, 11], result);
 
         Ok(())
     }
