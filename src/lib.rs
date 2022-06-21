@@ -551,22 +551,6 @@ mod test {
     }
 
     #[test]
-    fn iter_greater_int_case_intensitive() -> Result<()> {
-        let result: Vec<_> = [1, 2, 3, 11].into_iter().filter(query(">:i 2")?).collect();
-        assert_eq!(vec![3, 11], result);
-
-        Ok(())
-    }
-
-    #[test]
-    fn iter_len_case_intensitive_err() {
-        assert_eq!(
-            query::<&str>("len:i 3").err().unwrap(),
-            FltrError("the flag: 'i' is for operator 'len' not supported".into())
-        )
-    }
-
-    #[test]
     fn iter_str_one_of_case_intensitive() -> Result<()> {
         let result: Vec<&str> = ["", "aBc", "xyz", "abC", ""]
             .into_iter()
@@ -575,5 +559,32 @@ mod test {
         assert_eq!(vec!["aBc", "abC"], result);
 
         Ok(())
+    }
+
+    #[test]
+    fn iter_greater_int_case_intensitive_err() {
+        assert_eq!(
+            query::<i32>(">:i 2").err().unwrap(),
+            FltrError("the flag: 'i' supported only 'String' and 'char' values, not: '2'".into())
+        )
+    }
+
+    #[test]
+    fn iter_int_one_of_case_intensitive_err() {
+        assert_eq!(
+            query::<i32>("one_of:i [7, 9]").err().unwrap(),
+            FltrError(
+                "the flag: 'i' supported only 'String' and 'char' values, not: '[Int(7), Int(9)]'"
+                    .into()
+            )
+        )
+    }
+
+    #[test]
+    fn iter_len_case_intensitive_err() {
+        assert_eq!(
+            query::<&str>("len:i 3").err().unwrap(),
+            FltrError("the flag: 'i' is for operator 'len' not supported".into())
+        )
     }
 }

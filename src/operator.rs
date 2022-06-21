@@ -19,9 +19,9 @@
 //!
 //! ### Flags
 //!
-//! | flag | meaning          | example                             | hint                                                                                                                    |
-//! |------|------------------|-------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
-//! | `i`  | case insensitive |`=:i "ab"`<br /> (`ab, aB, Ab, AB`)  | is equivalent to a text comparison<br /> (greater and less for numbers **does not work**: 11 is less than 2 ==> "11" < "2") |
+//! | flag | meaning          | example                             | hint                                                      |
+//! |------|------------------|-------------------------------------|-----------------------------------------------------------|
+//! | `i`  | case insensitive |`=:i "ab"`<br /> (`ab, aB, Ab, AB`)  | this flag supported only `String`, `str` or `char` values |
 //!
 //!
 use crate::token::Op;
@@ -94,11 +94,14 @@ pub struct FlagResolver {
 }
 
 impl FlagResolver {
-    pub fn check_flag(value: Value, op: &Op, supported_flags: &[char]) -> Result<(Value, bool)> {
+    pub fn check_flag(value: Value, op: &Op, supported_flags: &[char]) -> Result<Value> {
         if let Some(c) = op.flag {
-            // TODO: check the Values (eg: only strings ...)
             if c == 'i' && supported_flags.contains(&c) {
-                return Ok(value.to_uppercase());
+                return value.to_uppercase().ok_or_else(|| {
+                    FltrError(format!(
+                        "the flag: '{c}' supported only 'String' and 'char' values, not: '{value}'"
+                    ))
+                });
             } else {
                 return Err(FltrError(format!(
                     "the flag: '{c}' is for operator '{}' not supported",
@@ -107,17 +110,15 @@ impl FlagResolver {
             }
         }
 
-        Ok((value, false))
+        Ok(value)
     }
 
     pub fn new(idx: usize, value: Value, op: &Op, supported_flags: &[char]) -> Result<Self> {
-        let (value, with_flag) = FlagResolver::check_flag(value, op, supported_flags)?;
-        let mut flag = op.flag;
-        if !with_flag {
-            flag = None;
-        }
-
-        Ok(Self { idx, value, flag })
+        Ok(Self {
+            idx,
+            value: FlagResolver::check_flag(value, op, supported_flags)?,
+            flag: op.flag,
+        })
     }
 
     pub fn handle<PR: PathResolver, Handler: Fn(&dyn Filterable, &Value) -> bool>(

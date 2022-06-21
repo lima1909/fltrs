@@ -56,21 +56,22 @@ pub(crate) fn str_to_number(s: &str) -> core::result::Result<Value, String> {
 }
 
 impl Value {
-    pub fn to_uppercase(self) -> (Value, bool) {
+    pub fn to_uppercase(&self) -> Option<Value> {
         match self {
-            Value::Char(mut c) => {
-                c.make_ascii_uppercase();
-                (Value::Text(c.as_string()), true)
-            }
-            Value::Text(mut t) => {
-                t.make_ascii_uppercase();
-                (Value::Text(t), true)
-            }
+            Value::Char(c) => Some(Value::Text(c.to_ascii_uppercase().as_string())),
+            Value::Text(t) => Some(Value::Text(t.to_ascii_uppercase())),
             Value::List(l) => {
-                let l = l.into_iter().map(|v| v.to_uppercase().0).collect();
-                (Value::List(l), true)
+                let mut result = vec![];
+                for v in l {
+                    if let Some(x) = v.to_uppercase() {
+                        result.push(x);
+                    } else {
+                        return None;
+                    }
+                }
+                Some(Value::List(result))
             }
-            _ => (self, false),
+            _ => None,
         }
     }
 }
@@ -270,23 +271,23 @@ mod test {
         str_to_number("i32").err().unwrap();
     }
 
-    #[test_case(Value::Text("a".into()) => Value::Text("A".into()) ; "Text: a -> A")]
-    #[test_case(Value::Text("ab_c".into()) => Value::Text("AB_C".into()))]
-    #[test_case(Value::Text("A".into()) => Value::Text("A".into()))]
-    #[test_case(Value::Text("_:-,;".into()) => Value::Text("_:-,;".into()))]
-    #[test_case(Value::Text("7".into()) => Value::Text("7".into()))]
-    #[test_case(Value::Char('a') => Value::Text("A".into()); "Char: a -> A")]
-    #[test_case(Value::Char('A') => Value::Text("A".into()))]
-    #[test_case(Value::Bool(true) => Value::Bool(true))]
-    #[test_case(Value::Int(42) => Value::Int(42))]
-    #[test_case(Value::Float(4.2) => Value::Float(4.2))]
-    #[test_case(Value::List(vec![Value::Text("42".into())]) => Value::List(vec![Value::Text("42".into())]))]
-    #[test_case(Value::List(vec![Value::Text("x".into()), Value::Text("y".into())]) => Value::List(vec![Value::Text("X".into()), Value::Text("Y".into())]))]
-    #[test_case(Value::List(vec![Value::Text("x_7".into()), Value::Text(" y ".into())]) => Value::List(vec![Value::Text("X_7".into()), Value::Text(" Y ".into())]))]
-    #[test_case(Value::List(vec![Value::List(vec![Value::Text("x".into()), Value::Text("y".into())])])  => Value::List(vec![Value::List(vec![Value::Text("X".into()), Value::Text("Y".into())])]))]
-    #[test_case(Value::List(vec![Value::Text("x".into()), Value::Int(7)]) => Value::List(vec![Value::Text("X".into()), Value::Int(7)]))]
-    fn to_uppercase(v: Value) -> Value {
-        v.to_uppercase().0
+    #[test_case(Value::Text("a".into()) => Some(Value::Text("A".into())) ; "Text: a -> A")]
+    #[test_case(Value::Text("ab_c".into()) => Some(Value::Text("AB_C".into())))]
+    #[test_case(Value::Text("A".into()) => Some(Value::Text("A".into())))]
+    #[test_case(Value::Text("_:-,;".into()) => Some(Value::Text("_:-,;".into())))]
+    #[test_case(Value::Text("7".into()) => Some(Value::Text("7".into())))]
+    #[test_case(Value::Char('a') => Some(Value::Text("A".into())); "Char: a -> A")]
+    #[test_case(Value::Char('A') => Some(Value::Text("A".into())))]
+    #[test_case(Value::List(vec![Value::Text("42".into())]) => Some(Value::List(vec![Value::Text("42".into())])))]
+    #[test_case(Value::List(vec![Value::Text("x".into()), Value::Text("y".into())]) => Some(Value::List(vec![Value::Text("X".into()), Value::Text("Y".into())])))]
+    #[test_case(Value::List(vec![Value::Text("x_7".into()), Value::Text(" y ".into())]) => Some(Value::List(vec![Value::Text("X_7".into()), Value::Text(" Y ".into())])))]
+    #[test_case(Value::List(vec![Value::List(vec![Value::Text("x".into()), Value::Text("y".into())])])  => Some(Value::List(vec![Value::List(vec![Value::Text("X".into()), Value::Text("Y".into())])])))]
+    #[test_case(Value::Bool(true) => None)]
+    #[test_case(Value::Int(42) => None)]
+    #[test_case(Value::Float(4.2) => None)]
+    #[test_case(Value::List(vec![Value::Text("x".into()), Value::Int(7)]) => None)]
+    fn to_uppercase(v: Value) -> Option<Value> {
+        v.to_uppercase()
     }
 
     #[test_case(Value::Text("A".into()) => String::from("A") ; "A" )]
