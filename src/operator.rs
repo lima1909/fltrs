@@ -205,7 +205,7 @@ fn one_of<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
     Ok(Box::new(move |pr| {
         fr.handle(pr, |f, v| {
             if let Value::List(vs) = v {
-                return vs.iter().filter(|value| f.eq(value)).count() > 0;
+                return vs.iter().any(|value| f.eq(value));
             }
             f.eq(v)
         })
