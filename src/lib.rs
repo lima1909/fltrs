@@ -364,6 +364,7 @@ mod test {
     #[test_case(" > 1 " => vec![Some(2), Some(3)] ; "> 1" )]
     #[test_case(" one_of [1, 2] " => vec![Some(1), Some(2)] ; "one_of 1 2" )]
     #[test_case(" one_of [1, none] " => vec![None, Some(1), None, None] ; "one_of 1 none" )]
+    #[test_case(" one_of [] " => Vec::<Option<i32>>::new() ; "one_of []" )]
     #[test_case(" = none" => vec![None, None, None] ; "eq none" )]
     #[test_case(" = None" => vec![None, None, None] ; "eq upper None" )]
     #[test_case(" = null" => vec![None, None, None] ; "eq null" )]
@@ -411,54 +412,46 @@ mod test {
     #[cfg(feature = "regex")]
     #[test]
     fn iter_regex() -> Result<()> {
-        assert_eq!(
-            2,
-            [1, 22, 333]
-                .into_iter()
-                .filter(query(r#"regex "[0-9]{2}""#)?)
-                .count()
-        );
+        let result: Vec<_> = [1, 22, 333]
+            .into_iter()
+            .filter(query(r#"regex "[0-9]{2}""#)?)
+            .collect();
 
+        assert_eq!(vec![22, 333], result);
         Ok(())
     }
 
     #[cfg(feature = "regex")]
     #[test]
     fn iter_point_regex() -> Result<()> {
-        assert_eq!(
-            1,
-            [Point::new(22, 4), Point::new(3, 5)]
-                .into_iter()
-                .filter(query(r#"x regex "[0-9]{2}""#)?)
-                .count()
-        );
+        let result: Vec<_> = [Point::new(22, 4), Point::new(3, 5)]
+            .into_iter()
+            .filter(query(r#"x regex "[0-9]{2}""#)?)
+            .collect();
 
+        assert_eq!(vec![Point::new(22, 4)], result);
         Ok(())
     }
 
     #[test]
     fn iter_point_fltrs() -> Result<()> {
-        assert_eq!(
-            1,
-            [Point::new(2, 4), Point::new(3, 5)]
-                .into_iter()
-                .filter(query("x > 1 and  y < 5")?)
-                .count()
-        );
+        let result: Vec<_> = [Point::new(2, 4), Point::new(3, 5)]
+            .into_iter()
+            .filter(query("x > 1 and  y < 5")?)
+            .collect();
 
+        assert_eq!(vec![Point::new(2, 4)], result);
         Ok(())
     }
 
     #[test]
     fn iter_point_one_of() -> Result<()> {
-        assert_eq!(
-            2,
-            [Point::new(2, 4), Point::new(3, 5), Point::new(4, 6)]
-                .into_iter()
-                .filter(query("x one_of [1, 2, 7, 4]")?)
-                .count()
-        );
+        let result: Vec<_> = [Point::new(2, 4), Point::new(3, 5), Point::new(4, 6)]
+            .into_iter()
+            .filter(query("x one_of [1, 2, 7, 4]")?)
+            .collect();
 
+        assert_eq!(vec![Point::new(2, 4), Point::new(4, 6)], result);
         Ok(())
     }
 
@@ -468,8 +461,8 @@ mod test {
             .into_iter()
             .filter(query(r#"= """#)?)
             .collect();
-        assert_eq!(vec!["", "", ""], result);
 
+        assert_eq!(vec!["", "", ""], result);
         Ok(())
     }
 
@@ -502,8 +495,8 @@ mod test {
             .into_iter()
             .filter(query(r#"one_of [""]"#)?)
             .collect();
-        assert_eq!(vec!["", "", ""], result);
 
+        assert_eq!(vec!["", "", ""], result);
         Ok(())
     }
 
@@ -513,8 +506,8 @@ mod test {
             .into_iter()
             .filter(query("contains:i 'b'")?)
             .collect();
-        assert_eq!(vec!["abc", "aBc"], result);
 
+        assert_eq!(vec!["abc", "aBc"], result);
         Ok(())
     }
 
@@ -524,8 +517,8 @@ mod test {
             .into_iter()
             .filter(query(r#"starts_with:i 'x'"#)?)
             .collect();
-        assert_eq!(vec!["xyz", "Xyz"], result);
 
+        assert_eq!(vec!["xyz", "Xyz"], result);
         Ok(())
     }
 
@@ -535,8 +528,8 @@ mod test {
             .into_iter()
             .filter(query(r#"ends_with:i "bc""#)?)
             .collect();
-        assert_eq!(vec!["abC", "aBc"], result);
 
+        assert_eq!(vec!["abC", "aBc"], result);
         Ok(())
     }
 
@@ -546,8 +539,8 @@ mod test {
             .into_iter()
             .filter(query(">:i 'w'")?)
             .collect();
-        assert_eq!(vec!['x', 'X'], result);
 
+        assert_eq!(vec!['x', 'X'], result);
         Ok(())
     }
 
@@ -557,8 +550,8 @@ mod test {
             .into_iter()
             .filter(query(r#"one_of:i ["abc", "sdf"]"#)?)
             .collect();
-        assert_eq!(vec!["aBc", "abC"], result);
 
+        assert_eq!(vec!["aBc", "abC"], result);
         Ok(())
     }
 
