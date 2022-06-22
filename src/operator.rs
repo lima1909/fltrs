@@ -10,11 +10,11 @@
 //! | `<=`          | less equal                        | `<= 5`                         | i               |
 //! | `>`           | greater                           | `> 5`                          | i               |
 //! | `>=`          | greater equal                     | `>= 5`                         | i               |
-//! | `len`         | length of an string               | `name len 5`                   |                 |
 //! | `contains`    | string contains other string/char | `name contains "Pe"`           | i               |
 //! | `starts_with` | string starts with string/char    | `name starts_with "Pe"`        | i               |
 //! | `ends_with`   | string ends with string/char      | `name ends_with "er"`          | i               |
 //! | `one_of`      | one element from given list       | `x one_of [1, 3, 7]`           | i               |
+//! | `len`         | length of an string               | `name len 5`                   |                 |
 //! | `regex`       | regexpression (feature = "regex") | `x regex "[0-9]{2}"`           |                 |
 //!
 //! ### Flags
@@ -25,15 +25,14 @@
 //!
 //!
 use crate::token::Op;
-use crate::value::Value;
-use crate::{Filterable, FltrError, PathResolver, Predicate, Result};
+use crate::{AsString, Filterable, FltrError, PathResolver, Predicate, Result, Value};
 
 pub type OperatorFn<PR> = fn(fr: FlagResolver) -> Result<Predicate<PR>>;
 
 pub struct Operator<PR> {
     name: &'static str,
     f: OperatorFn<PR>,
-    flags: Vec<char>,
+    supported_flags: Vec<char>,
 }
 
 impl<PR> Operator<PR> {
@@ -41,7 +40,7 @@ impl<PR> Operator<PR> {
         Self {
             name,
             f,
-            flags: Vec::from(flags),
+            supported_flags: Vec::from(flags),
         }
     }
 }
@@ -61,11 +60,11 @@ impl<PR: PathResolver> Default for Operators<PR> {
                 (Operator::new("<", lt, &['i'])),
                 (Operator::new(">=", ge, &['i'])),
                 (Operator::new(">", gt, &['i'])),
-                (Operator::new("len", len, &[])),
                 (Operator::new("contains", contains, &['i'])),
                 (Operator::new("starts_with", starts_with, &['i'])),
                 (Operator::new("ends_with", ends_with, &['i'])),
                 (Operator::new("one_of", one_of, &['i'])),
+                (Operator::new("len", len, &[])),
                 #[cfg(feature = "regex")]
                 (Operator::new("regex", regex, &[])),
             ],
@@ -77,7 +76,7 @@ impl<PR: PathResolver> Operators<PR> {
     pub fn get(&self, op: &Op, idx: usize, v: Value) -> Result<Predicate<PR>> {
         if let Some(o) = self.ops.iter().find(|current| current.name == op.name) {
             let create = o.f;
-            return create(FlagResolver::new(idx, v, op, &o.flags)?);
+            return create(FlagResolver::new(idx, v, op, &o.supported_flags)?);
         }
         Err(FltrError(format!("invalid operation: '{}'", op)))
     }
@@ -87,21 +86,41 @@ impl<PR: PathResolver> Operators<PR> {
     }
 }
 
+const NO_FLAG: char = ' ';
+
 pub struct FlagResolver {
     idx: usize,
     value: Value,
-    flag: Option<char>,
+    flag: char,
 }
 
 impl FlagResolver {
-    pub fn check_flag(value: Value, op: &Op, supported_flags: &[char]) -> Result<Value> {
+    pub fn new(idx: usize, value: Value, op: &Op, flags: &[char]) -> Result<Self> {
+        Ok(Self {
+            idx,
+            value: FlagResolver::check_flag(value, op, flags)?,
+            flag: if let Some(c) = op.flag { c } else { NO_FLAG },
+        })
+    }
+
+    pub fn check_flag(value: Value, op: &Op, flags: &[char]) -> Result<Value> {
         if let Some(c) = op.flag {
-            if c == 'i' && supported_flags.contains(&c) {
-                return value.to_uppercase().ok_or_else(|| {
-                    FltrError(format!(
-                        "the flag: '{c}' supported only 'String' and 'char' values, not: '{value}'"
-                    ))
-                });
+            if flags.contains(&c) {
+                match c {
+                    'i' => {
+                        return text_value_to_uppercase(&value).ok_or_else(|| {
+                            FltrError(format!(
+                                "the flag: '{c}' supported only 'String' and 'char' values, not: '{value}'"
+                            ))
+                        });
+                    }
+                    _ => {
+                        return Err(FltrError(format!(
+                            "unimplemented flag: '{c}' for operator '{}'",
+                            op.name
+                        )));
+                    }
+                }
             } else {
                 return Err(FltrError(format!(
                     "the flag: '{c}' is for operator '{}' not supported",
@@ -113,32 +132,43 @@ impl FlagResolver {
         Ok(value)
     }
 
-    pub fn new(idx: usize, value: Value, op: &Op, supported_flags: &[char]) -> Result<Self> {
-        Ok(Self {
-            idx,
-            value: FlagResolver::check_flag(value, op, supported_flags)?,
-            flag: op.flag,
-        })
-    }
-
     pub fn handle<PR: PathResolver, Handler: Fn(&dyn Filterable, &Value) -> bool>(
         &self,
         pr: &PR,
         h: Handler,
     ) -> bool {
-        if let Some(f) = self.flag {
-            if f == 'i' {
-                return h(
-                    &pr.value(self.idx).as_string().to_ascii_uppercase(),
-                    &self.value,
-                );
-            }
+        match self.flag {
+            'i' => h(
+                &pr.value(self.idx).as_string().to_ascii_uppercase(),
+                &self.value,
+            ),
+            _ => h(pr.value(self.idx), &self.value),
         }
-
-        h(pr.value(self.idx), &self.value)
     }
 }
 
+pub fn text_value_to_uppercase(value: &Value) -> Option<Value> {
+    match value {
+        Value::Char(c) => Some(Value::Text(c.to_ascii_uppercase().as_string())),
+        Value::Text(t) => Some(Value::Text(t.to_ascii_uppercase())),
+        Value::List(l) => {
+            let mut result = vec![];
+            for v in l {
+                if let Some(x) = text_value_to_uppercase(v) {
+                    result.push(x);
+                } else {
+                    return None;
+                }
+            }
+            Some(Value::List(result))
+        }
+        _ => None,
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Operator implementations
+///////////////////////////////////////////////////////////////////////////////
 fn eq<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
     Ok(Box::new(move |pr| fr.handle(pr, |f, v| f == v)))
 }
@@ -215,8 +245,6 @@ fn one_of<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
 
 #[cfg(feature = "regex")]
 fn regex<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
-    use crate::AsString;
-
     let rg = regex::Regex::new(&fr.value.as_string()).or_else(|e| Err(FltrError(e.to_string())))?;
     Ok(Box::new(move |pr| {
         fr.handle(pr, |f, _v| rg.is_match(&f.as_string()))
@@ -357,5 +385,24 @@ mod test {
         let ops = Operators::default();
         let exec = ops.get(&Op::from_str("regex"), 0, Value::Text(regex.to_string()))?;
         Ok((exec)(&input))
+    }
+
+    #[test_case(Value::Text("a".into()) => Some(Value::Text("A".into())) ; "Text: a -> A")]
+    #[test_case(Value::Text("ab_c".into()) => Some(Value::Text("AB_C".into())))]
+    #[test_case(Value::Text("A".into()) => Some(Value::Text("A".into())))]
+    #[test_case(Value::Text("_:-,;".into()) => Some(Value::Text("_:-,;".into())))]
+    #[test_case(Value::Text("7".into()) => Some(Value::Text("7".into())))]
+    #[test_case(Value::Char('a') => Some(Value::Text("A".into())); "Char: a -> A")]
+    #[test_case(Value::Char('A') => Some(Value::Text("A".into())))]
+    #[test_case(Value::List(vec![Value::Text("42".into())]) => Some(Value::List(vec![Value::Text("42".into())])))]
+    #[test_case(Value::List(vec![Value::Text("x".into()), Value::Text("y".into())]) => Some(Value::List(vec![Value::Text("X".into()), Value::Text("Y".into())])))]
+    #[test_case(Value::List(vec![Value::Text("x_7".into()), Value::Text(" y ".into())]) => Some(Value::List(vec![Value::Text("X_7".into()), Value::Text(" Y ".into())])))]
+    #[test_case(Value::List(vec![Value::List(vec![Value::Text("x".into()), Value::Text("y".into())])])  => Some(Value::List(vec![Value::List(vec![Value::Text("X".into()), Value::Text("Y".into())])])))]
+    #[test_case(Value::Bool(true) => None)]
+    #[test_case(Value::Int(42) => None)]
+    #[test_case(Value::Float(4.2) => None)]
+    #[test_case(Value::List(vec![Value::Text("x".into()), Value::Int(7)]) => None)]
+    fn text_value_to_uppercase_check(v: Value) -> Option<Value> {
+        text_value_to_uppercase(&v)
     }
 }

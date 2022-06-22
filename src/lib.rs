@@ -141,9 +141,10 @@ mod token;
 pub mod value;
 
 pub use crate::error::FltrError;
+pub use crate::value::Value;
+
 use crate::operator::{Operator, OperatorFn, Operators};
 use crate::parser::{parse, AsValueFn, Parser};
-use crate::value::Value;
 
 /// The default [`core::result::Result`] with the error: [`FltrError`].
 pub type Result<T> = core::result::Result<T, FltrError>;
