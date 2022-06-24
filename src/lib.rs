@@ -351,6 +351,24 @@ mod test {
     use test_case::test_case;
 
     #[test]
+    fn simple_exec_query() -> Result<()> {
+        assert!(query(r#" = "abc" "#)?(&"abc"));
+        Ok(())
+    }
+
+    #[test]
+    fn iter_i32_ref() -> Result<()> {
+        let q = query(" > 3")?;
+        let v = vec![7, 2, 3, 4, 5];
+        let result: Vec<&i32> = v.iter().filter(|v| q(*v)).collect();
+        // TODO: support for ref: &i32
+        // let result: Vec<&i32> = v.iter().filter(query(" > 4")?).collect();
+        assert_eq!(vec![&7, &4, &5], result);
+
+        Ok(())
+    }
+
+    #[test]
     fn iter_char_space() -> Result<()> {
         let result: Vec<char> = [' ', 'a', ' ', 'b', ' ']
             .into_iter()
