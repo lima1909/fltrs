@@ -237,24 +237,45 @@ impl<F: Filterable> PathResolver for F {
 /// A Predicate is an boxed [`core::ops::Fn`].
 pub type Predicate<PR> = Box<dyn Fn(&PR) -> bool>;
 
-/// The `query` function create a [`Predicate`] respectively [`core::ops::Fn`] with which you can
-/// execute a filter on a given slice.
+/// Create a [`Predicate`] with which you can
+/// execute a filter on a given iterator, created with `into_iter` ([`std::iter#the-three-forms-of-iteration`]).
 ///
 /// ### Example
 /// ```
 /// use fltrs::query;
 ///
 /// assert_eq!(
-///     ["Inge", "Paul", "Peter", "Ina"],
 ///     ["Inge", "Paul", "Peter", "Jasmin", "Ina", "Mario"]
-///                 .into_iter()
-///                 .filter(query(r#"starts_with "In" or starts_with 'P'"#).unwrap())
-///                 .collect::<Vec<&str>>()
-///                 .as_slice(),
+///            .into_iter()
+///            .filter(query(r#"starts_with "In" or starts_with 'P'"#).unwrap())
+///            .collect::<Vec<&str>>()
+///            .as_slice(),
+///     ["Inge", "Paul", "Peter", "Ina"]
 /// );
 /// ```
 pub fn query<PR: PathResolver + 'static>(query: &str) -> Result<Predicate<PR>> {
     crate::query::query(parse(query)?, &Operators::<PR>::default())
+}
+
+/// Create a [`Predicate`] with which you can
+/// execute a filter on a given iterator, created with `iter` ([`std::iter#the-three-forms-of-iteration`]).
+///
+/// ### Example
+/// ```
+/// use fltrs::query_ref;
+///
+/// assert_eq!(
+///     ["Inge", "Paul", "Peter", "Jasmin", "Ina", "Mario"]
+///            .iter()
+///            .filter(query_ref(r#"starts_with "In" or starts_with 'P'"#).unwrap())
+///            .collect::<Vec<&&str>>()
+///            .as_slice(),
+///     [&"Inge", &"Paul", &"Peter", &"Ina"]
+/// );
+/// ```
+pub fn query_ref<PR: PathResolver + 'static>(query: &str) -> Result<impl Fn(&&PR) -> bool> {
+    let f = crate::query::query(parse(query)?, &Operators::<PR>::default())?;
+    Ok(move |pr: &&PR| f(*pr))
 }
 
 /// The Query is an builder to configure the [`query()`]. It is possible, to extend the Operators in the modul: [`mod@crate::operator`].
@@ -357,15 +378,28 @@ mod test {
     }
 
     #[test]
-    fn iter_i32_ref() -> Result<()> {
-        let q = query(" > 3")?;
-        let v = vec![7, 2, 3, 4, 5];
-        let result: Vec<&i32> = v.iter().filter(|v| q(*v)).collect();
-        // TODO: support for ref: &i32
-        // let result: Vec<&i32> = v.iter().filter(query(" > 4")?).collect();
-        assert_eq!(vec![&7, &4, &5], result);
+    fn iter_string_ref() {
+        let v = vec![String::from("a"), String::from("b"), String::from("c")];
+        let result: Vec<&String> = v.iter().filter(query_ref(r#" = "a" "#).unwrap()).collect();
+        assert_eq!(vec![&String::from("a")], result);
+    }
 
-        Ok(())
+    #[test]
+    fn iter_str_ref() {
+        let result: Vec<&&str> = ["a", "b", "c"]
+            .iter()
+            .filter(query_ref(r#" = "a" "#).unwrap())
+            .collect();
+        assert_eq!(vec![&"a"], result);
+    }
+
+    #[test]
+    fn iter_u8_ref() {
+        let result: Vec<&u8> = [1, 5, 4]
+            .iter()
+            .filter(query_ref(" != 5 ").unwrap())
+            .collect();
+        assert_eq!(vec![&1, &4], result);
     }
 
     #[test]
@@ -375,6 +409,54 @@ mod test {
             .filter(query(r#"= ' '"#)?)
             .collect();
         assert_eq!(vec![' ', ' ', ' '], result);
+
+        Ok(())
+    }
+
+    #[derive(PartialEq, Debug)]
+    struct Car {
+        name: String,
+        ps: u16,
+    }
+
+    impl Car {
+        fn new(name: &str, ps: u16) -> Self {
+            Self {
+                name: name.to_owned(),
+                ps,
+            }
+        }
+    }
+
+    impl PathResolver for Car {
+        fn path_to_index(path: &str) -> Option<usize> {
+            match path {
+                "name" => Some(0),
+                "ps" => Some(1),
+                _ => None,
+            }
+        }
+
+        fn value(&self, idx: usize) -> &dyn Filterable {
+            match idx {
+                0 => &self.name,
+                _ => &self.ps,
+            }
+        }
+    }
+
+    #[test]
+    fn iter_cars() -> Result<()> {
+        let cars = [Car::new("Porsche", 345), Car::new("Audi", 234)];
+
+        let result: Vec<_> = cars
+            .iter()
+            .filter(query_ref(" name starts_with:i 'p' ")?)
+            .collect();
+        assert_eq!(vec![&Car::new("Porsche", 345)], result);
+
+        let result: Vec<_> = cars.iter().filter(query_ref(" ps < 300")?).collect();
+        assert_eq!(vec![&Car::new("Audi", 234)], result);
 
         Ok(())
     }
@@ -390,7 +472,7 @@ mod test {
     #[test_case(" not = none " => vec![Some(1), Some(2), Some(3)] ; "not none" )]
     #[test_case(" not < 2" => vec![None, None, Some(2), Some(3), None] ; "not less 2" )]
     #[test_case(" != 2" => vec![None, Some(1), None, Some(3), None] ; "neq 2" )]
-    fn iter_option(query_str: &str) -> Vec<Option<i32>> {
+    fn into_iter_option(query_str: &str) -> Vec<Option<i32>> {
         let result: Vec<Option<i32>> = [None, Some(1), None, Some(2), Some(3), None]
             .into_iter()
             .filter(query(query_str).unwrap())
@@ -429,7 +511,7 @@ mod test {
 
     #[cfg(feature = "regex")]
     #[test]
-    fn iter_regex() -> Result<()> {
+    fn into_iter_regex() -> Result<()> {
         let result: Vec<_> = [1, 22, 333]
             .into_iter()
             .filter(query(r#"regex "[0-9]{2}""#)?)
@@ -441,7 +523,7 @@ mod test {
 
     #[cfg(feature = "regex")]
     #[test]
-    fn iter_point_regex() -> Result<()> {
+    fn into_iter_point_regex() -> Result<()> {
         let result: Vec<_> = [Point::new(22, 4), Point::new(3, 5)]
             .into_iter()
             .filter(query(r#"x regex "[0-9]{2}""#)?)
@@ -452,7 +534,7 @@ mod test {
     }
 
     #[test]
-    fn iter_point_fltrs() -> Result<()> {
+    fn into_iter_point_fltrs() -> Result<()> {
         let result: Vec<_> = [Point::new(2, 4), Point::new(3, 5)]
             .into_iter()
             .filter(query("x > 1 and  y < 5")?)
@@ -463,7 +545,7 @@ mod test {
     }
 
     #[test]
-    fn iter_point_one_of() -> Result<()> {
+    fn into_iter_point_one_of() -> Result<()> {
         let result: Vec<_> = [Point::new(2, 4), Point::new(3, 5), Point::new(4, 6)]
             .into_iter()
             .filter(query("x one_of [1, 2, 7, 4]")?)
@@ -474,7 +556,7 @@ mod test {
     }
 
     #[test]
-    fn iter_str_empty() -> Result<()> {
+    fn into_iter_str_empty() -> Result<()> {
         let result: Vec<&str> = ["", "abc", "", "xyz", ""]
             .into_iter()
             .filter(query(r#"= """#)?)
@@ -485,7 +567,7 @@ mod test {
     }
 
     #[test]
-    fn iter_str_not_empty() -> Result<()> {
+    fn into_iter_str_not_empty() -> Result<()> {
         let result: Vec<&str> = ["", "abc", "", "xyz", ""]
             .into_iter()
             .filter(query(r#"not = "" "#)?)
@@ -508,7 +590,7 @@ mod test {
     }
 
     #[test]
-    fn iter_str_one_of_empty() -> Result<()> {
+    fn into_iter_str_one_of_empty() -> Result<()> {
         let result: Vec<&str> = ["", "abc", "", "xyz", ""]
             .into_iter()
             .filter(query(r#"one_of [""]"#)?)
@@ -519,7 +601,7 @@ mod test {
     }
 
     #[test]
-    fn iter_contains_case_intensitive() -> Result<()> {
+    fn into_iter_contains_case_intensitive() -> Result<()> {
         let result: Vec<&str> = ["abc", "aBc", "xyz", "Xyz", ""]
             .into_iter()
             .filter(query("contains:i 'b'")?)
@@ -530,7 +612,7 @@ mod test {
     }
 
     #[test]
-    fn iter_starts_with_case_intensitive() -> Result<()> {
+    fn into_iter_starts_with_case_intensitive() -> Result<()> {
         let result: Vec<&str> = ["abc", "aBc", "xyz", "Xyz", ""]
             .into_iter()
             .filter(query(r#"starts_with:i 'x'"#)?)
@@ -541,7 +623,7 @@ mod test {
     }
 
     #[test]
-    fn iter_ends_with_case_intensitive() -> Result<()> {
+    fn into_iter_ends_with_case_intensitive() -> Result<()> {
         let result: Vec<&str> = ["abC", "aBc", "xyz", "Xyz", ""]
             .into_iter()
             .filter(query(r#"ends_with:i "bc""#)?)
@@ -552,7 +634,7 @@ mod test {
     }
 
     #[test]
-    fn iter_greater_char_case_intensitive() -> Result<()> {
+    fn into_iter_greater_char_case_intensitive() -> Result<()> {
         let result: Vec<_> = ['b', 'B', 'x', 'X']
             .into_iter()
             .filter(query(">:i 'w'")?)
@@ -563,7 +645,7 @@ mod test {
     }
 
     #[test]
-    fn iter_str_one_of_case_intensitive() -> Result<()> {
+    fn into_iter_str_one_of_case_intensitive() -> Result<()> {
         let result: Vec<&str> = ["", "aBc", "xyz", "abC", ""]
             .into_iter()
             .filter(query(r#"one_of:i ["abc", "sdf"]"#)?)
@@ -574,7 +656,7 @@ mod test {
     }
 
     #[test]
-    fn iter_greater_int_case_intensitive_err() {
+    fn into_iter_greater_int_case_intensitive_err() {
         assert_eq!(
             query::<i32>(">:i 2").err().unwrap(),
             FltrError("the flag: 'i' supported only 'String' and 'char' values, not: '2'".into())
@@ -582,7 +664,7 @@ mod test {
     }
 
     #[test]
-    fn iter_int_one_of_case_intensitive_err() {
+    fn into_iter_int_one_of_case_intensitive_err() {
         assert_eq!(
             query::<i32>("one_of:i [7, 9]").err().unwrap(),
             FltrError(
@@ -593,7 +675,7 @@ mod test {
     }
 
     #[test]
-    fn iter_len_case_intensitive_err() {
+    fn into_iter_len_case_intensitive_err() {
         assert_eq!(
             query::<&str>("len:i 3").err().unwrap(),
             FltrError("the flag: 'i' is for operator 'len' not supported".into())

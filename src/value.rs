@@ -92,7 +92,7 @@ macro_rules! partial_eq_cmp {
 
 partial_eq_cmp! { Value::Bool => bool }
 partial_eq_cmp! { Value::Char => char }
-partial_eq_cmp! { Value::Text => String &str}
+partial_eq_cmp! { Value::Text => String &str }
 partial_eq_cmp! { Value::Int as i32 => usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 }
 
 impl PartialEq<Value> for f64 {
