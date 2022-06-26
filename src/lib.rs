@@ -465,6 +465,8 @@ mod test {
     #[test_case(" one_of [1, 2] " => vec![Some(1), Some(2)] ; "one_of 1 2" )]
     #[test_case(" one_of [1, none] " => vec![None, Some(1), None, None] ; "one_of 1 none" )]
     #[test_case(" one_of [] " => Vec::<Option<i32>>::new() ; "one_of []" )]
+    #[test_case(" one_of 1" => vec![Some(1)] ; "one_of 1" )]
+    #[test_case(" one_of none" => vec![None, None, None] ; "one_of none" )]
     #[test_case(" = none" => vec![None, None, None] ; "eq none" )]
     #[test_case(" = None" => vec![None, None, None] ; "eq upper None" )]
     #[test_case(" = null" => vec![None, None, None] ; "eq null" )]
@@ -472,6 +474,7 @@ mod test {
     #[test_case(" not = none " => vec![Some(1), Some(2), Some(3)] ; "not none" )]
     #[test_case(" not < 2" => vec![None, None, Some(2), Some(3), None] ; "not less 2" )]
     #[test_case(" != 2" => vec![None, Some(1), None, Some(3), None] ; "neq 2" )]
+    #[test_case(" != '2'" => vec![None, Some(1), None, Some(2), Some(3), None] ; "neq char 2" )]
     fn into_iter_option(query_str: &str) -> Vec<Option<i32>> {
         let result: Vec<Option<i32>> = [None, Some(1), None, Some(2), Some(3), None]
             .into_iter()
