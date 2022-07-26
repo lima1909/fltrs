@@ -140,7 +140,7 @@ impl Op {
 impl Display for Op {
     fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(flag) = &self.flag {
-            write!(fm, "{}::{} ", self.name, flag)?;
+            write!(fm, "{}:{flag} ", self.name)?;
         }
 
         write!(fm, "{}", self.name)

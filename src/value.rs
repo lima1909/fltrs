@@ -70,7 +70,7 @@ macro_rules! partial_eq_cmp {
         ( main $val:path $(as $as:ty)? => $t:ty ) => {
             impl ::core::cmp::PartialEq<Value> for $t {
                 #[inline]
-                fn eq(&self, other: &crate::value::Value) -> bool {
+                fn eq(&self, other: &$crate::value::Value) -> bool {
                     if let $val(v) = other {
                         return  (*self $(as  $as)?).eq(v);
                     }
@@ -80,7 +80,7 @@ macro_rules! partial_eq_cmp {
 
             impl ::core::cmp::PartialOrd<Value> for $t {
                 #[inline]
-                fn partial_cmp(&self, other: &crate::value::Value) -> Option<::core::cmp::Ordering> {
+                fn partial_cmp(&self, other: &$crate::value::Value) -> Option<::core::cmp::Ordering> {
                     if let $val(v) = other {
                         return (*self $(as  $as)?).partial_cmp(v);
                     }
