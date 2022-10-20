@@ -11,15 +11,15 @@ repository = "https://github.com/lima1909/fltrs"
 
 
 [dependencies]
-regex  = { version = "1.5", optional = true }
+regex  = { version = "1.6", optional = true }
 
 [features]
 # default = [ "regex" ]
 regex = [ "dep:regex" ]
 
 [dev-dependencies]
-test-case = "2.0"
-criterion = "0.3"
+test-case = "2.2"
+criterion = "0.4"
 
 [[bench]]
 name = "bench_rt"

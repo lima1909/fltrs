@@ -115,7 +115,7 @@ impl Display for Predicate {
     }
 }
 
-#[derive(PartialEq, PartialOrd, Debug)]
+#[derive(Eq, PartialEq, PartialOrd, Debug)]
 pub struct Op {
     pub name: String,
     pub flag: Option<char>,
