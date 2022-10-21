@@ -47,12 +47,17 @@ fn from_filter<PR: PathResolver + 'static>(
     match filter {
         Filter::Predicate(p) => {
             let path = p.path.unwrap_or_default();
-            let idx = PR::path_to_index(&path).ok_or_else(|| {
-                FltrError(format!(
-                    "invalid path: '{}' for value: '{}'",
-                    path, &p.value
-                ))
-            })?;
+            let idx = PR::pathes()
+                .iter()
+                .enumerate()
+                .find(|(_, p)| **p == path)
+                .map(|(idx, _)| idx)
+                .ok_or_else(|| {
+                    FltrError(format!(
+                        "invalid path: '{}' for value: '{}'",
+                        path, &p.value
+                    ))
+                })?;
             ops.get(&p.op, idx, p.value)
         }
         Filter::Not(exp) => Ok(Not(query(exp, ops)?).into()),
@@ -126,13 +131,8 @@ mod test {
     }
 
     impl PathResolver for Car<'_> {
-        fn path_to_index(path: &str) -> Option<usize> {
-            match path {
-                "name" => Some(0),
-                "ps" => Some(1),
-                "size" => Some(2),
-                _ => None,
-            }
+        fn pathes() -> &'static [&'static str] {
+            &["name", "ps", "size"]
         }
 
         fn value(&self, idx: usize) -> &dyn Filterable {

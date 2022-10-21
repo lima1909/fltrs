@@ -90,7 +90,7 @@
 //! This is possible, if the struct implement the trait: [`PathResolver`].
 //!
 //! ```
-//! use fltrs::{PathResolver, Filterable, query};
+//! use fltrs::{path_resolver, Filterable, query};
 //!
 //! #[derive(PartialEq, Debug)]
 //! struct Point {
@@ -99,24 +99,7 @@
 //!     y:    i32,
 //! }
 //!
-//! impl PathResolver for Point {
-//!     fn path_to_index(path: &str) -> Option<usize> {
-//!         match path {
-//!             "name"  => Some(0),
-//!             "x"     => Some(1),
-//!             "y"     => Some(2),
-//!             _ => None,
-//!         }
-//!     }
-//!
-//!     fn value(&self, idx: usize) -> &dyn Filterable {
-//!         match idx {
-//!             0 => &self.name,
-//!             1 => &self.x,
-//!             _ => &self.y,
-//!         }
-//!     }
-//! }
+//! path_resolver!(Point: name, x, y);
 //!
 //! let result: Vec<Point> =
 //!     [
@@ -198,13 +181,8 @@ impl<V: PartialEq<Value> + PartialOrd<Value> + AsString> Filterable for V {}
 /// }
 ///
 /// impl PathResolver for Point {
-///     fn path_to_index(path: &str) -> Option<usize> {
-///         match path {
-///             "name"  => Some(0),
-///             "x"     => Some(1),
-///             "y"     => Some(2),
-///             _ => None,
-///         }
+///     fn pathes() -> &'static [&'static str] {
+///         &["name", "x", "y"]
 ///     }
 ///
 ///     fn value(&self, idx: usize) -> &dyn Filterable {
@@ -215,23 +193,103 @@ impl<V: PartialEq<Value> + PartialOrd<Value> + AsString> Filterable for V {}
 ///         }
 ///     }
 /// }
+/// ```
 
 pub trait PathResolver {
-    /// Is the mapping from a path (struct field name) to an index (that is used by the value-function).
-    /// If the path is not a valid, than is the return value: `None`.
-    fn path_to_index(path: &str) -> Option<usize>;
-    /// The value of the struct field with the given index.
+    /// Returns all possible pathes (fields) of the given struct.
+    fn pathes() -> &'static [&'static str];
+    /// The value of the struct field for the given index of [`PathResolver::pathes`] .
     fn value(&self, idx: usize) -> &dyn Filterable;
 }
 
 impl<F: Filterable> PathResolver for F {
-    fn path_to_index(_path: &str) -> Option<usize> {
-        Some(0)
+    fn pathes() -> &'static [&'static str] {
+        &["", "self"]
     }
 
     fn value(&self, _idx: usize) -> &dyn Filterable {
         self
     }
+}
+
+/// Short way to implement the trai: [`PathResolver`].
+///
+/// ### Example short, with macro:
+/// ```
+/// use fltrs::{path_resolver, Filterable};
+///
+/// struct Point {
+///     name: &'static str,
+///     x:    i32,
+///     y:    i32,
+/// }
+///
+/// path_resolver!(Point: name, x, y);
+/// ```
+///
+/// ### Example long:
+/// ```
+/// use fltrs::{PathResolver, Filterable};
+///
+/// struct Point {
+///     name: &'static str,
+///     x:    i32,
+///     y:    i32,
+/// }
+///
+/// impl PathResolver for Point {
+///     fn pathes() -> &'static [&'static str] {
+///         &["name", "x", "y"]
+///     }
+///
+///     fn value(&self, idx: usize) -> &dyn Filterable {
+///         match idx {
+///             0 => &self.name,
+///             1 => &self.x,
+///             _ => &self.y,
+///         }
+///     }
+/// }
+/// ```
+
+#[macro_export]
+macro_rules! path_resolver {
+    ( $t:ty : $path:ident ) => {
+        path_resolver!(# $t : $path => 0);
+    };
+
+    ( $t:ty : $path0:ident, $path1:ident ) => {
+        path_resolver!(# $t : $path0 => 0, $path1 => 1);
+    };
+
+    ( $t:ty : $path0:ident, $path1:ident, $path2:ident ) => {
+        path_resolver!(# $t : $path0 => 0, $path1 => 1, $path2 => 2);
+    };
+
+    ( $t:ty : $path0:ident, $path1:ident, $path2:ident, $path3:ident ) => {
+        path_resolver!(# $t : $path0 => 0, $path1 => 1, $path2 => 2, $path3 => 3);
+    };
+
+    ( $t:ty : $path0:ident, $path1:ident, $path2:ident, $path3:ident, $path4:ident ) => {
+        path_resolver!(# $t : $path0 => 0, $path1 => 1, $path2 => 2, $path3 => 3, $path4 => 4);
+    };
+
+
+    ( # $t:ty : $($path:ident => $idx:expr), + ) => {
+        impl $crate::PathResolver for $t {
+
+            fn pathes() -> &'static [&'static str] {
+                &[ $( (stringify!($path)), )+ ]
+            }
+
+            fn value(&self, idx: usize) -> &dyn Filterable {
+                match idx {
+                    $( $idx => &self.$path, )+
+                    _ => unreachable!("invalid index: {}", idx),
+                }
+            }
+        }
+    };
 }
 
 /// A Predicate is an boxed [`core::ops::Fn`].
@@ -428,22 +486,7 @@ mod test {
         }
     }
 
-    impl PathResolver for Car {
-        fn path_to_index(path: &str) -> Option<usize> {
-            match path {
-                "name" => Some(0),
-                "ps" => Some(1),
-                _ => None,
-            }
-        }
-
-        fn value(&self, idx: usize) -> &dyn Filterable {
-            match idx {
-                0 => &self.name,
-                _ => &self.ps,
-            }
-        }
-    }
+    path_resolver!(Car: name, ps);
 
     #[test]
     fn iter_cars() -> Result<()> {
@@ -495,22 +538,7 @@ mod test {
         }
     }
 
-    impl PathResolver for Point {
-        fn path_to_index(path: &str) -> Option<usize> {
-            match path {
-                "x" => Some(0),
-                "y" => Some(1),
-                _ => None,
-            }
-        }
-
-        fn value(&self, idx: usize) -> &dyn Filterable {
-            match idx {
-                0 => &self.x,
-                _ => &self.y,
-            }
-        }
-    }
+    path_resolver!(Point: x, y);
 
     #[cfg(feature = "regex")]
     #[test]

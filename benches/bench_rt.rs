@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use fltrs::{Filterable, PathResolver};
+use fltrs::{path_resolver, Filterable};
 
 fn query(c: &mut Criterion) {
     c.bench_function("query", |b| {
@@ -37,22 +37,7 @@ struct Point {
     x: i32,
 }
 
-impl PathResolver for Point {
-    fn path_to_index(path: &str) -> Option<usize> {
-        match path {
-            "name" => Some(0),
-            "x" => Some(1),
-            _ => None,
-        }
-    }
-
-    fn value(&self, idx: usize) -> &dyn Filterable {
-        match idx {
-            1 => &self.x,
-            _ => &self.name,
-        }
-    }
-}
+path_resolver!(Point: name, x);
 
 fn get_points() -> Vec<Point> {
     vec![
