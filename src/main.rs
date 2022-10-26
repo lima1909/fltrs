@@ -18,7 +18,7 @@ use std::fmt::{Debug, Display};
 //     }
 // }
 
-// pub type Predicate<PR> = fn(&PR) -> bool;
+pub type PredicateFn = Box<dyn Fn(&dyn Filterable) -> bool>;
 
 /// Is the function for the given operator.
 /// e.g: Op: "=" -> function: |a,b| a == b
@@ -40,7 +40,7 @@ fn op_len(inner: &Value, arg: &dyn Filterable) -> bool {
     false
 }
 
-type FnFactory = fn(inner: Value, opfn: OpFn) -> Box<dyn Fn(&dyn Filterable) -> bool>;
+type FnFactory = fn(inner: Value, opfn: OpFn) -> PredicateFn;
 
 const NO_FLAG: char = ' ';
 
@@ -55,20 +55,16 @@ fn flags(flag: Option<char>) -> FnFactory {
     no_flag
 }
 
-fn flag_uppercase(inner: Value, opfn: OpFn) -> Box<dyn Fn(&dyn Filterable) -> bool> {
+fn flag_uppercase(inner: Value, opfn: OpFn) -> PredicateFn {
     let inner = Value::Text((&inner).to_string().to_ascii_uppercase());
     Box::new(move |f: &dyn Filterable| (opfn)(&inner, &f.to_string().to_ascii_uppercase()))
 }
 
-fn no_flag(inner: Value, opfn: OpFn) -> Box<dyn Fn(&dyn Filterable) -> bool> {
+fn no_flag(inner: Value, opfn: OpFn) -> PredicateFn {
     Box::new(move |f: &dyn Filterable| (opfn)(&inner, f))
 }
 
-fn predicate(
-    inner: Value,
-    op: &'static str,
-    flag: Option<char>,
-) -> Box<dyn Fn(&dyn Filterable) -> bool> {
+fn predicate(inner: Value, op: &'static str, flag: Option<char>) -> PredicateFn {
     let opfn = ops(op);
     let factory = flags(flag);
     (factory)(inner, opfn)
