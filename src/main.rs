@@ -30,7 +30,7 @@ fn ops(op: &'static str) -> OpFn {
     ops.insert("!=", |inner: &Value, arg: &dyn Filterable| arg != inner);
     ops.insert("len", op_len);
 
-    ops.get(op).unwrap().clone()
+    *ops.get(op).unwrap()
 }
 
 fn op_len(inner: &Value, arg: &dyn Filterable) -> bool {
