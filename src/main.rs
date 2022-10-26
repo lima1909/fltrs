@@ -56,7 +56,7 @@ fn flags(flag: Option<char>) -> FnFactory {
 }
 
 fn flag_uppercase(inner: Value, opfn: OpFn) -> PredicateFn {
-    let inner = Value::Text((&inner).to_string().to_ascii_uppercase());
+    let inner = Value::Text((inner).to_string().to_ascii_uppercase());
     Box::new(move |f: &dyn Filterable| (opfn)(&inner, &f.to_string().to_ascii_uppercase()))
 }
 
@@ -70,6 +70,7 @@ fn predicate(inner: Value, op: &'static str, flag: Option<char>) -> PredicateFn 
     (factory)(inner, opfn)
 }
 
+#[allow(clippy::type_complexity)]
 fn predicate_observer<'a, O: Observer>(
     inner: Value,
     op: &'static str,
