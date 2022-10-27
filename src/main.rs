@@ -120,11 +120,11 @@ struct DebugObserver;
 // "Blub" [=i "blub"] ["BLUB" = "BLUB"] (true)
 impl Observer for DebugObserver {
     fn predicate(&self, op: &str, inner: &Value, arg: &dyn Filterable, result: bool) {
-        println!("{inner:?} {op} {arg} ({result})");
+        println!("{op} {inner} [{arg} -> {result}]");
     }
 
-    fn link(&self, link: &str, arg: &dyn Filterable, result: bool) {
-        println!("{link} {arg} ({result})");
+    fn link(&self, link: &str, _arg: &dyn Filterable, result: bool) {
+        println!("{link} [{result}]");
     }
 }
 
@@ -152,11 +152,11 @@ pub enum Value {
     Text(String),
 }
 
-impl ToString for Value {
-    fn to_string(&self) -> String {
+impl Display for Value {
+    fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::Text(t) => t.to_string(),
-            Value::Int(i) => format!("{i}"),
+            Value::Int(v) => write!(fm, "{}", v),
+            Value::Text(v) => write!(fm, "{}", v),
         }
     }
 }
