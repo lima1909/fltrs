@@ -20,6 +20,7 @@ use std::fmt::{Debug, Display};
 // }
 
 pub type PredicateFn = Box<dyn Fn(&dyn Filterable) -> bool>;
+pub type PredicateFnLt<'a> = Box<dyn Fn(&dyn Filterable) -> bool + 'a>;
 
 /// Is the function for the given operator.
 /// e.g: Op: "=" -> function: |a,b| a == b
@@ -71,13 +72,12 @@ fn predicate(inner: Value, op: &'static str, flag: Option<char>) -> PredicateFn 
     (factory)(inner, opfn)
 }
 
-#[allow(clippy::type_complexity)]
 fn predicate_observer<'a, O: Observer>(
     inner: Value,
     op: &'static str,
     flag: Option<char>,
     o: &'a O,
-) -> Box<dyn Fn(&dyn Filterable) -> bool + 'a> {
+) -> PredicateFnLt<'a> {
     let opfn = ops(op);
     let factory = flags(flag);
     let f = (factory)(inner.clone(), opfn);
@@ -89,15 +89,15 @@ fn predicate_observer<'a, O: Observer>(
     })
 }
 
-fn and(left: PredicateFn, right: PredicateFn) -> PredicateFn {
+fn and<'a>(left: &'a PredicateFnLt<'a>, right: &'a PredicateFnLt<'a>) -> PredicateFnLt<'a> {
     Box::new(move |arg: &dyn Filterable| left(arg) && right(arg))
 }
 
 fn and_observer<'a, O: Observer>(
-    left: PredicateFn,
-    right: PredicateFn,
+    left: &'a PredicateFnLt<'a>,
+    right: &'a PredicateFnLt<'a>,
     o: &'a O,
-) -> Box<dyn Fn(&dyn Filterable) -> bool + 'a> {
+) -> PredicateFnLt<'a> {
     Box::new(move |arg: &dyn Filterable| {
         let result = left(arg) && right(arg);
         o.link("AND", arg, result);
@@ -105,8 +105,20 @@ fn and_observer<'a, O: Observer>(
     })
 }
 
-fn or(left: PredicateFn, right: PredicateFn) -> PredicateFn {
+fn or<'a>(left: &'a PredicateFn, right: &'a PredicateFn) -> PredicateFnLt<'a> {
     Box::new(move |arg: &dyn Filterable| left(arg) || right(arg))
+}
+
+fn or_observer<'a, O: Observer>(
+    left: &'a PredicateFnLt<'a>,
+    right: &'a PredicateFnLt<'a>,
+    o: &'a O,
+) -> PredicateFnLt<'a> {
+    Box::new(move |arg: &dyn Filterable| {
+        let result = left(arg) || right(arg);
+        o.link("OR", arg, result);
+        result
+    })
 }
 
 trait Observer {
@@ -119,12 +131,12 @@ struct DebugObserver;
 // 5 [= 5] (true) 5 [= 6] (false) and (false)
 // "Blub" [=i "blub"] ["BLUB" = "BLUB"] (true)
 impl Observer for DebugObserver {
-    fn predicate(&self, op: &str, inner: &Value, arg: &dyn Filterable, result: bool) {
-        println!("{op} {inner} [{arg} -> {result}]");
+    fn predicate(&self, op: &str, inner: &Value, _arg: &dyn Filterable, result: bool) {
+        print!("{op} {inner} [{result}] ");
     }
 
     fn link(&self, link: &str, _arg: &dyn Filterable, result: bool) {
-        println!("{link} [{result}]");
+        print!("{link} [{result}] ");
     }
 }
 
@@ -135,14 +147,19 @@ fn main() {
     assert!(f0(&"Blub"));
 
     let debug = DebugObserver {};
+
     let f1 = predicate_observer(Value::Text(String::from("blub")), "=", Some('i'), &debug);
-    assert!(f1(&"Blub"));
+    let f2 = predicate_observer(Value::Int(3), "len", None, &debug);
 
-    let f2 = predicate_observer(Value::Int(4), "len", None, &debug);
-    assert!(f2(&"Blub"));
+    println!("-------------------");
+    assert!(!and_observer(&f1, &f2, &debug)(&"Blub"));
+    println!();
+    assert!(!and_observer(&f2, &f1, &debug)(&"Blub"));
 
-    // println!("-------------------");
-    // and(f1, f2);
+    println!();
+    assert!(or_observer(&f1, &f2, &debug)(&"Blub"));
+    println!();
+    assert!(or_observer(&f2, &f1, &debug)(&"Blub"));
 }
 
 // ---------------------------------------------------------
