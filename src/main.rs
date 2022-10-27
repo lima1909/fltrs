@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 
@@ -88,6 +89,26 @@ fn predicate_observer<'a, O: Observer>(
     })
 }
 
+fn and(left: PredicateFn, right: PredicateFn) -> PredicateFn {
+    Box::new(move |arg: &dyn Filterable| left(arg) && right(arg))
+}
+
+fn and_observer<'a, O: Observer>(
+    left: PredicateFn,
+    right: PredicateFn,
+    o: &'a O,
+) -> Box<dyn Fn(&dyn Filterable) -> bool + 'a> {
+    Box::new(move |arg: &dyn Filterable| {
+        let result = left(arg) && right(arg);
+        o.link("AND", arg, result);
+        result
+    })
+}
+
+fn or(left: PredicateFn, right: PredicateFn) -> PredicateFn {
+    Box::new(move |arg: &dyn Filterable| left(arg) || right(arg))
+}
+
 trait Observer {
     fn predicate(&self, op: &str, inner: &Value, arg: &dyn Filterable, result: bool);
     fn link(&self, link: &str, arg: &dyn Filterable, result: bool);
@@ -121,12 +142,7 @@ fn main() {
     assert!(f2(&"Blub"));
 
     // println!("-------------------");
-    // let _and = And {
-    //     left: f1,
-    //     right: f2,
-    // }
-    // .exec_observer(&"Blub", &debug);
-    // assert!(and.exec_observer(&"Blub", &debug));
+    // and(f1, f2);
 }
 
 // ---------------------------------------------------------
