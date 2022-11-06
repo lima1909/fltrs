@@ -2,35 +2,157 @@
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 
-// struct And {
-//     left: Box<dyn Fn(&dyn Filterable) -> bool>,
-//     right: Box<dyn Fn(&dyn Filterable) -> bool>,
-// }
-
-// impl And {
-//     fn exec(&self, arg: &dyn Filterable) -> bool {
-//         (self.left)(arg) && (self.right)(arg)
-//     }
-
-//     fn exec_observer<O: Observer>(&self, arg: &dyn Filterable, o: &O) -> bool {
-//         let result = (self.left)(arg) && (self.right)(arg);
-//         o.link("AND", arg, result);
-//         result
-//     }
-// }
-
-pub type PredicateFn = Box<dyn Fn(&dyn Filterable) -> bool>;
-pub type PredicateFnLt<'a> = Box<dyn Fn(&dyn Filterable) -> bool + 'a>;
-
 /// Is the function for the given operator.
 /// e.g: Op: "=" -> function: |a,b| a == b
 type OpFn = fn(inner: &Value, arg: &dyn Filterable) -> bool;
+
+// ------------
+// op: len -> Value::Int? => l
+// op: regex -> Value::to_string => Regex
+// flag: i -> Value::to_string::to_ascii_uppercase => Value::Text
+//
+// Value -> irgendwas?
+//
+// result: Box<dyn Fn(&dyn Filterable) -> bool>
+// trait Executor {
+//     fn exec(&self, arg: &dyn Filterable) -> bool;
+// }
+
+trait FuncFactory {
+    fn create(&self) -> PredicateFn;
+}
+
+struct Len(Option<usize>);
+
+impl Len {
+    fn new(v: Value) -> Self {
+        if let Value::Int(l) = v {
+            return Self(Some(l as usize));
+        }
+        Self(None)
+    }
+}
+
+// impl Executor for Len {
+//     fn exec(&self, arg: &dyn Filterable) -> bool {
+//         self.0.map(|l| arg.to_string().len() == l).unwrap_or(false)
+//     }
+// }
+
+impl FuncFactory for Len {
+    fn create(&self) -> Box<dyn Fn(&dyn Filterable) -> bool> {
+        let len = self.0;
+        Box::new(move |arg: &dyn Filterable| {
+            len.map(|l| arg.to_string().len() == l).unwrap_or(false)
+        })
+    }
+}
+
+#[cfg(feature = "regex")]
+struct Regex(regex::Regex);
+
+#[cfg(feature = "regex")]
+impl Regex {
+    fn new(v: Value) -> Self {
+        Self(regex::Regex::new(&v.to_string()).unwrap())
+    }
+}
+
+// impl Executor for Regex {
+//     fn exec(&self, arg: &dyn Filterable) -> bool {
+//         self.0.is_match(&arg.to_string())
+//     }
+// }
+#[cfg(feature = "regex")]
+impl FuncFactory for Regex {
+    fn create(&self) -> Box<dyn Fn(&dyn Filterable) -> bool> {
+        let regex = self.0.clone();
+        Box::new(move |arg: &dyn Filterable| regex.is_match(&arg.to_string()))
+    }
+}
+
+struct Eq {
+    value: Value,
+    flag: Option<char>,
+}
+
+impl Eq {
+    fn new(v: Value, flag: Option<char>) -> Self {
+        if let Some(f) = flag {
+            if f == 'i' {
+                return Self {
+                    value: Value::Text((v).to_string().to_ascii_uppercase()),
+                    flag,
+                };
+            }
+        }
+        Self { value: v, flag }
+    }
+}
+
+// impl Executor for Eq {
+//     fn exec(&self, arg: &dyn Filterable) -> bool {
+//         if let Some(f) = self.flag {
+//             if f == 'i' {
+//                 return arg.to_string().to_ascii_uppercase() == self.value;
+//             }
+//         }
+//         arg == &self.value
+//     }
+// }
+
+impl FuncFactory for Eq {
+    fn create(&self) -> Box<dyn Fn(&dyn Filterable) -> bool> {
+        let value = self.value.clone();
+        if let Some(f) = self.flag {
+            if f == 'i' {
+                return Box::new(move |arg: &dyn Filterable| {
+                    arg.to_string().to_ascii_uppercase() == value
+                });
+            }
+        }
+        Box::new(move |arg: &dyn Filterable| arg == &value)
+    }
+}
+
+// ---
+// fn execs(op: &'static str, v: Value, flag: Option<char>) -> Box<dyn Executor + 'static> {
+//     let mut execs: HashMap<&str, fn(Value, Option<char>) -> Box<dyn Executor>> = HashMap::new();
+
+//     execs.insert("=", |v: Value, flag: Option<char>| {
+//         Box::new(Eq::new(v, flag))
+//     });
+//     execs.insert("len", |v: Value, _| Box::new(Len::new(v)));
+//     #[cfg(feature = "regex")]
+//     execs.insert("regex", |v: Value, _| Box::new(Regex::new(v)));
+
+//     let f = execs.get(op).unwrap();
+//     f(v, flag)
+// }
+type FnFuncFactory = fn(Value, Option<char>) -> Box<dyn FuncFactory>;
+fn execs(op: &'static str, v: Value, flag: Option<char>) -> PredicateFn {
+    let mut execs: HashMap<&str, FnFuncFactory> = HashMap::new();
+
+    execs.insert("=", |v: Value, flag: Option<char>| {
+        Box::new(Eq::new(v, flag))
+    });
+    execs.insert("len", |v: Value, _| Box::new(Len::new(v)));
+    #[cfg(feature = "regex")]
+    execs.insert("regex", |v: Value, _| Box::new(Regex::new(v)));
+
+    let f = execs.get(op).unwrap();
+    f(v, flag).create()
+}
+
+// ------------
 
 fn ops(op: &'static str) -> OpFn {
     let mut ops: HashMap<&str, OpFn> = HashMap::new();
     ops.insert("=", |inner: &Value, arg: &dyn Filterable| arg == inner);
     ops.insert("!=", |inner: &Value, arg: &dyn Filterable| arg != inner);
     ops.insert("len", op_len);
+    #[cfg(feature = "regex")]
+    ops.insert("regex", regex);
 
     *ops.get(op).unwrap()
 }
@@ -41,6 +163,16 @@ fn op_len(inner: &Value, arg: &dyn Filterable) -> bool {
     }
     false
 }
+
+#[cfg(feature = "regex")]
+fn regex(inner: &Value, arg: &dyn Filterable) -> bool {
+    let rg = regex::Regex::new(&inner.to_string()).unwrap();
+    println!("-----CALL----");
+    rg.is_match(&arg.to_string())
+}
+
+pub type PredicateFn = Box<dyn Fn(&dyn Filterable) -> bool>;
+pub type PredicateFnLt<'a> = Box<dyn Fn(&dyn Filterable) -> bool + 'a>;
 
 type FnFactory = fn(inner: Value, opfn: OpFn) -> PredicateFn;
 
@@ -66,59 +198,63 @@ fn no_flag(inner: Value, opfn: OpFn) -> PredicateFn {
     Box::new(move |f: &dyn Filterable| (opfn)(&inner, f))
 }
 
-fn predicate(inner: Value, op: &'static str, flag: Option<char>) -> PredicateFn {
-    let opfn = ops(op);
-    let factory = flags(flag);
-    (factory)(inner, opfn)
-}
-
-fn predicate_observer<'a, O: Observer>(
+fn predicate<'a>(
     inner: Value,
     op: &'static str,
     flag: Option<char>,
-    o: &'a O,
+    o: Option<&'a dyn Observer>,
 ) -> PredicateFnLt<'a> {
     let opfn = ops(op);
     let factory = flags(flag);
-    let f = (factory)(inner.clone(), opfn);
 
-    Box::new(move |arg: &dyn Filterable| {
-        let result = (f)(arg);
-        o.predicate(op, &inner, arg, result);
-        result
-    })
+    if let Some(o) = o {
+        let f = (factory)(inner.clone(), opfn);
+
+        return Box::new(move |arg: &dyn Filterable| {
+            let result = (f)(arg);
+            o.predicate(op, &inner, arg, result);
+            result
+        });
+    }
+
+    (factory)(inner, opfn)
 }
 
-fn and<'a>(left: &'a PredicateFnLt<'a>, right: &'a PredicateFnLt<'a>) -> PredicateFnLt<'a> {
+fn and<'a>(
+    left: &'a PredicateFnLt<'a>,
+    right: &'a PredicateFnLt<'a>,
+    o: Option<&'a dyn Observer>,
+) -> PredicateFnLt<'a> {
+    if let Some(o) = o {
+        return Box::new(move |arg: &dyn Filterable| {
+            let result = left(arg) && right(arg);
+            o.link("AND", arg, result);
+            result
+        });
+    }
     Box::new(move |arg: &dyn Filterable| left(arg) && right(arg))
 }
 
-fn and_observer<'a, O: Observer>(
+fn or<'a>(
     left: &'a PredicateFnLt<'a>,
     right: &'a PredicateFnLt<'a>,
-    o: &'a O,
+    o: Option<&'a dyn Observer>,
 ) -> PredicateFnLt<'a> {
-    Box::new(move |arg: &dyn Filterable| {
-        let result = left(arg) && right(arg);
-        o.link("AND", arg, result);
-        result
-    })
-}
-
-fn or<'a>(left: &'a PredicateFn, right: &'a PredicateFn) -> PredicateFnLt<'a> {
+    if let Some(o) = o {
+        return Box::new(move |arg: &dyn Filterable| {
+            let result = left(arg) || right(arg);
+            o.link("OR", arg, result);
+            result
+        });
+    }
     Box::new(move |arg: &dyn Filterable| left(arg) || right(arg))
 }
 
-fn or_observer<'a, O: Observer>(
-    left: &'a PredicateFnLt<'a>,
-    right: &'a PredicateFnLt<'a>,
-    o: &'a O,
-) -> PredicateFnLt<'a> {
-    Box::new(move |arg: &dyn Filterable| {
-        let result = left(arg) || right(arg);
-        o.link("OR", arg, result);
-        result
-    })
+fn observers(observer: &str) -> fn() -> Box<dyn Observer> {
+    let mut observers: HashMap<&str, fn() -> Box<dyn Observer>> = HashMap::new();
+    observers.insert("debug", || Box::new(DebugObserver {}));
+
+    observers.get(&observer).cloned().unwrap()
 }
 
 trait Observer {
@@ -143,23 +279,46 @@ impl Observer for DebugObserver {
 fn main() {
     println!("Lets go ...");
 
-    let f0 = predicate(Value::Text(String::from("Blub")), "=", None);
+    // ------------------
+    let f = execs("len", Value::Int(4), None);
+    assert!(f(&"Blub"));
+    let f = execs("regex", Value::Text(String::from("B.*")), None);
+    assert!(f(&"Blub"));
+    let f = execs("=", Value::Text(String::from("bLUb")), Some('i'));
+    assert!(f(&"Blub"));
+
+    // ------------------
+
+    #[cfg(feature = "regex")]
+    {
+        let reg = predicate(Value::Text(String::from("B.*")), "regex", None, None);
+        assert!(reg(&"Blub"));
+        assert!(reg(&"B"));
+    }
+
+    let debug = observers("debug")();
+    let debug = debug.as_ref();
+
+    let f0 = predicate(Value::Text(String::from("Blub")), "=", None, None);
     assert!(f0(&"Blub"));
 
-    let debug = DebugObserver {};
-
-    let f1 = predicate_observer(Value::Text(String::from("blub")), "=", Some('i'), &debug);
-    let f2 = predicate_observer(Value::Int(3), "len", None, &debug);
+    let f1 = predicate(
+        Value::Text(String::from("blub")),
+        "=",
+        Some('i'),
+        Some(debug),
+    );
+    let f2 = predicate(Value::Int(3), "len", None, Some(debug));
 
     println!("-------------------");
-    assert!(!and_observer(&f1, &f2, &debug)(&"Blub"));
+    assert!(!and(&f1, &f2, Some(debug))(&"Blub"));
     println!();
-    assert!(!and_observer(&f2, &f1, &debug)(&"Blub"));
+    assert!(!and(&f2, &f1, Some(debug))(&"Blub"));
 
     println!();
-    assert!(or_observer(&f1, &f2, &debug)(&"Blub"));
+    assert!(or(&f1, &f2, Some(debug))(&"Blub"));
     println!();
-    assert!(or_observer(&f2, &f1, &debug)(&"Blub"));
+    assert!(or(&f2, &f1, Some(debug))(&"Blub"));
 }
 
 // ---------------------------------------------------------
