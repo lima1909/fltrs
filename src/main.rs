@@ -2,6 +2,8 @@
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 
+pub type PredicateFn = Box<dyn Fn(&dyn Filterable) -> bool>;
+
 /// Is the function for the given operator.
 /// e.g: Op: "=" -> function: |a,b| a == b
 type OpFn = fn(inner: &Value, arg: &dyn Filterable) -> bool;
@@ -14,9 +16,6 @@ type OpFn = fn(inner: &Value, arg: &dyn Filterable) -> bool;
 // Value -> irgendwas?
 //
 // result: Box<dyn Fn(&dyn Filterable) -> bool>
-// trait Executor {
-//     fn exec(&self, arg: &dyn Filterable) -> bool;
-// }
 
 trait FuncFactory {
     fn create(&self) -> PredicateFn;
@@ -33,18 +32,12 @@ impl Len {
     }
 }
 
-// impl Executor for Len {
-//     fn exec(&self, arg: &dyn Filterable) -> bool {
-//         self.0.map(|l| arg.to_string().len() == l).unwrap_or(false)
-//     }
-// }
-
 impl FuncFactory for Len {
-    fn create(&self) -> Box<dyn Fn(&dyn Filterable) -> bool> {
-        let len = self.0;
-        Box::new(move |arg: &dyn Filterable| {
-            len.map(|l| arg.to_string().len() == l).unwrap_or(false)
-        })
+    fn create(&self) -> PredicateFn {
+        if let Some(len) = self.0 {
+            return Box::new(move |arg: &dyn Filterable| arg.to_string().len() == len);
+        }
+        Box::new(move |_: &dyn Filterable| false)
     }
 }
 
@@ -58,90 +51,51 @@ impl Regex {
     }
 }
 
-// impl Executor for Regex {
-//     fn exec(&self, arg: &dyn Filterable) -> bool {
-//         self.0.is_match(&arg.to_string())
-//     }
-// }
 #[cfg(feature = "regex")]
 impl FuncFactory for Regex {
-    fn create(&self) -> Box<dyn Fn(&dyn Filterable) -> bool> {
+    fn create(&self) -> PredicateFn {
         let regex = self.0.clone();
         Box::new(move |arg: &dyn Filterable| regex.is_match(&arg.to_string()))
     }
 }
 
-struct Eq {
-    value: Value,
-    flag: Option<char>,
-}
-
-impl Eq {
-    fn new(v: Value, flag: Option<char>) -> Self {
-        if let Some(f) = flag {
-            if f == 'i' {
-                return Self {
-                    value: Value::Text((v).to_string().to_ascii_uppercase()),
-                    flag,
-                };
-            }
-        }
-        Self { value: v, flag }
-    }
-}
-
-// impl Executor for Eq {
-//     fn exec(&self, arg: &dyn Filterable) -> bool {
-//         if let Some(f) = self.flag {
-//             if f == 'i' {
-//                 return arg.to_string().to_ascii_uppercase() == self.value;
-//             }
-//         }
-//         arg == &self.value
-//     }
-// }
+struct Eq(Value);
 
 impl FuncFactory for Eq {
-    fn create(&self) -> Box<dyn Fn(&dyn Filterable) -> bool> {
-        let value = self.value.clone();
-        if let Some(f) = self.flag {
-            if f == 'i' {
-                return Box::new(move |arg: &dyn Filterable| {
-                    arg.to_string().to_ascii_uppercase() == value
-                });
-            }
-        }
+    fn create(&self) -> PredicateFn {
+        let value = self.0.clone();
         Box::new(move |arg: &dyn Filterable| arg == &value)
     }
 }
 
-// ---
-// fn execs(op: &'static str, v: Value, flag: Option<char>) -> Box<dyn Executor + 'static> {
-//     let mut execs: HashMap<&str, fn(Value, Option<char>) -> Box<dyn Executor>> = HashMap::new();
+type FnFuncFactory = fn(Value) -> Box<dyn FuncFactory>;
 
-//     execs.insert("=", |v: Value, flag: Option<char>| {
-//         Box::new(Eq::new(v, flag))
-//     });
-//     execs.insert("len", |v: Value, _| Box::new(Len::new(v)));
-//     #[cfg(feature = "regex")]
-//     execs.insert("regex", |v: Value, _| Box::new(Regex::new(v)));
-
-//     let f = execs.get(op).unwrap();
-//     f(v, flag)
-// }
-type FnFuncFactory = fn(Value, Option<char>) -> Box<dyn FuncFactory>;
 fn execs(op: &'static str, v: Value, flag: Option<char>) -> PredicateFn {
     let mut execs: HashMap<&str, FnFuncFactory> = HashMap::new();
 
-    execs.insert("=", |v: Value, flag: Option<char>| {
-        Box::new(Eq::new(v, flag))
-    });
-    execs.insert("len", |v: Value, _| Box::new(Len::new(v)));
+    let mut value = v;
+    let mut flag_fn = None;
+    if let Some(f) = flag {
+        if f == 'i' {
+            value = Value::Text((value).to_string().to_ascii_uppercase());
+            flag_fn = Some(|f: PredicateFn| {
+                Box::new(move |arg: &dyn Filterable| f(&arg.to_string().to_ascii_uppercase()))
+            });
+        }
+    }
+
+    execs.insert("=", |v: Value| Box::new(Eq(v)));
+    execs.insert("len", |v: Value| Box::new(Len::new(v)));
     #[cfg(feature = "regex")]
-    execs.insert("regex", |v: Value, _| Box::new(Regex::new(v)));
+    execs.insert("regex", |v: Value| Box::new(Regex::new(v)));
 
     let f = execs.get(op).unwrap();
-    f(v, flag).create()
+    let mut f = f(value).create();
+
+    if let Some(ff) = flag_fn {
+        f = ff(f)
+    }
+    f
 }
 
 // ------------
@@ -171,7 +125,6 @@ fn regex(inner: &Value, arg: &dyn Filterable) -> bool {
     rg.is_match(&arg.to_string())
 }
 
-pub type PredicateFn = Box<dyn Fn(&dyn Filterable) -> bool>;
 pub type PredicateFnLt<'a> = Box<dyn Fn(&dyn Filterable) -> bool + 'a>;
 
 type FnFactory = fn(inner: Value, opfn: OpFn) -> PredicateFn;
@@ -282,8 +235,12 @@ fn main() {
     // ------------------
     let f = execs("len", Value::Int(4), None);
     assert!(f(&"Blub"));
-    let f = execs("regex", Value::Text(String::from("B.*")), None);
-    assert!(f(&"Blub"));
+
+    #[cfg(feature = "regex")]
+    {
+        let f = execs("regex", Value::Text(String::from("B.*")), None);
+        assert!(f(&"Blub"));
+    }
     let f = execs("=", Value::Text(String::from("bLUb")), Some('i'));
     assert!(f(&"Blub"));
 
