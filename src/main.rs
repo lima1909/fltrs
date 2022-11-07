@@ -9,70 +9,28 @@ pub type PredicateFn = Box<dyn Fn(&dyn Filterable) -> bool>;
 type OpFn = fn(inner: &Value, arg: &dyn Filterable) -> bool;
 
 // ------------
-// op: len -> Value::Int? => l
-// op: regex -> Value::to_string => Regex
-// flag: i -> Value::to_string::to_ascii_uppercase => Value::Text
-//
-// Value -> irgendwas?
-//
-// result: Box<dyn Fn(&dyn Filterable) -> bool>
-
-trait FuncFactory {
-    fn create(&self) -> PredicateFn;
+fn eq(v: Value) -> PredicateFn {
+    Box::new(move |arg: &dyn Filterable| arg == &v)
 }
 
-struct Len(Option<usize>);
-
-impl Len {
-    fn new(v: Value) -> Self {
-        if let Value::Int(l) = v {
-            return Self(Some(l as usize));
-        }
-        Self(None)
-    }
+fn neq(v: Value) -> PredicateFn {
+    Box::new(move |arg: &dyn Filterable| arg != &v)
 }
 
-impl FuncFactory for Len {
-    fn create(&self) -> PredicateFn {
-        if let Some(len) = self.0 {
-            return Box::new(move |arg: &dyn Filterable| arg.to_string().len() == len);
-        }
-        Box::new(move |_: &dyn Filterable| false)
-    }
+fn len(v: Value) -> PredicateFn {
+    let Value::Int(l) = v else {
+        return Box::new(move |_: &dyn Filterable| false);
+    };
+    Box::new(move |arg: &dyn Filterable| arg.to_string().len() == l as usize)
 }
 
 #[cfg(feature = "regex")]
-struct Regex(regex::Regex);
-
-#[cfg(feature = "regex")]
-impl Regex {
-    fn new(v: Value) -> Self {
-        Self(regex::Regex::new(&v.to_string()).unwrap())
-    }
+fn regex(v: Value) -> PredicateFn {
+    let regex = regex::Regex::new(&v.to_string()).unwrap();
+    Box::new(move |arg: &dyn Filterable| regex.is_match(&arg.to_string()))
 }
-
-#[cfg(feature = "regex")]
-impl FuncFactory for Regex {
-    fn create(&self) -> PredicateFn {
-        let regex = self.0.clone();
-        Box::new(move |arg: &dyn Filterable| regex.is_match(&arg.to_string()))
-    }
-}
-
-struct Eq(Value);
-
-impl FuncFactory for Eq {
-    fn create(&self) -> PredicateFn {
-        let value = self.0.clone();
-        Box::new(move |arg: &dyn Filterable| arg == &value)
-    }
-}
-
-type FnFuncFactory = fn(Value) -> Box<dyn FuncFactory>;
 
 fn execs(op: &'static str, v: Value, flag: Option<char>) -> PredicateFn {
-    let mut execs: HashMap<&str, FnFuncFactory> = HashMap::new();
-
     let mut value = v;
     let mut flag_fn = None;
     if let Some(f) = flag {
@@ -84,13 +42,15 @@ fn execs(op: &'static str, v: Value, flag: Option<char>) -> PredicateFn {
         }
     }
 
-    execs.insert("=", |v: Value| Box::new(Eq(v)));
-    execs.insert("len", |v: Value| Box::new(Len::new(v)));
+    let mut execs: HashMap<&str, fn(Value) -> PredicateFn> = HashMap::new();
+    execs.insert("=", eq);
+    execs.insert("!=", neq);
+    execs.insert("len", len);
     #[cfg(feature = "regex")]
-    execs.insert("regex", |v: Value| Box::new(Regex::new(v)));
+    execs.insert("regex", regex);
 
     let f = execs.get(op).unwrap();
-    let mut f = f(value).create();
+    let mut f = f(value);
 
     if let Some(ff) = flag_fn {
         f = ff(f)
@@ -106,7 +66,7 @@ fn ops(op: &'static str) -> OpFn {
     ops.insert("!=", |inner: &Value, arg: &dyn Filterable| arg != inner);
     ops.insert("len", op_len);
     #[cfg(feature = "regex")]
-    ops.insert("regex", regex);
+    ops.insert("regex", regex_old);
 
     *ops.get(op).unwrap()
 }
@@ -119,9 +79,8 @@ fn op_len(inner: &Value, arg: &dyn Filterable) -> bool {
 }
 
 #[cfg(feature = "regex")]
-fn regex(inner: &Value, arg: &dyn Filterable) -> bool {
+fn regex_old(inner: &Value, arg: &dyn Filterable) -> bool {
     let rg = regex::Regex::new(&inner.to_string()).unwrap();
-    println!("-----CALL----");
     rg.is_match(&arg.to_string())
 }
 
