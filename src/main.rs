@@ -30,7 +30,12 @@ fn regex(v: Value) -> PredicateFn {
     Box::new(move |arg: &dyn Filterable| regex.is_match(&arg.to_string()))
 }
 
-fn execs(op: &'static str, v: Value, flag: Option<char>) -> PredicateFn {
+fn execs<'a>(
+    op: &'a str,
+    v: Value,
+    flag: Option<char>,
+    o: Option<&'a dyn Observer>,
+) -> PredicateFnLt<'a> {
     let mut value = v;
     let mut flag_fn = None;
     if let Some(f) = flag {
@@ -50,10 +55,18 @@ fn execs(op: &'static str, v: Value, flag: Option<char>) -> PredicateFn {
     execs.insert("regex", regex);
 
     let f = execs.get(op).unwrap();
-    let mut f = f(value);
+    let mut f = f(value.clone());
 
     if let Some(ff) = flag_fn {
         f = ff(f)
+    }
+
+    if let Some(obs) = o {
+        return Box::new(move |arg: &dyn Filterable| {
+            let result = (f)(arg);
+            obs.predicate(op, &value, arg, result);
+            result
+        });
     }
     f
 }
@@ -179,8 +192,8 @@ struct DebugObserver;
 // 5 [= 5] (true) 5 [= 6] (false) and (false)
 // "Blub" [=i "blub"] ["BLUB" = "BLUB"] (true)
 impl Observer for DebugObserver {
-    fn predicate(&self, op: &str, inner: &Value, _arg: &dyn Filterable, result: bool) {
-        print!("{op} {inner} [{result}] ");
+    fn predicate(&self, op: &str, inner: &Value, arg: &dyn Filterable, result: bool) {
+        print!("{arg}: {op} {inner} [{result}] ");
     }
 
     fn link(&self, link: &str, _arg: &dyn Filterable, result: bool) {
@@ -191,16 +204,24 @@ impl Observer for DebugObserver {
 fn main() {
     println!("Lets go ...");
 
+    let debug = observers("debug")();
+    let debug = debug.as_ref();
+
     // ------------------
-    let f = execs("len", Value::Int(4), None);
+    let f = execs("len", Value::Int(4), None, Some(debug));
     assert!(f(&"Blub"));
 
     #[cfg(feature = "regex")]
     {
-        let f = execs("regex", Value::Text(String::from("B.*")), None);
+        let f = execs("regex", Value::Text(String::from("B.*")), None, Some(debug));
         assert!(f(&"Blub"));
     }
-    let f = execs("=", Value::Text(String::from("bLUb")), Some('i'));
+    let f = execs(
+        "=",
+        Value::Text(String::from("bLUb")),
+        Some('i'),
+        Some(debug),
+    );
     assert!(f(&"Blub"));
 
     // ------------------
@@ -211,9 +232,6 @@ fn main() {
         assert!(reg(&"Blub"));
         assert!(reg(&"B"));
     }
-
-    let debug = observers("debug")();
-    let debug = debug.as_ref();
 
     let f0 = predicate(Value::Text(String::from("Blub")), "=", None, None);
     assert!(f0(&"Blub"));
@@ -226,7 +244,7 @@ fn main() {
     );
     let f2 = predicate(Value::Int(3), "len", None, Some(debug));
 
-    println!("-------------------");
+    println!("\n-------------------");
     assert!(!and(&f1, &f2, Some(debug))(&"Blub"));
     println!();
     assert!(!and(&f2, &f1, Some(debug))(&"Blub"));
