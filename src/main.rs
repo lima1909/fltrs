@@ -30,22 +30,35 @@ fn regex(v: Value) -> PredicateFn {
     Box::new(move |arg: &dyn Filterable| regex.is_match(&arg.to_string()))
 }
 
+type Value2ValueFN = fn(Value) -> Value;
+type PredicateFn2PredicateFn = fn(PredicateFn) -> PredicateFn;
+
+fn flags_x(flag: Option<char>) -> (Value2ValueFN, PredicateFn2PredicateFn) {
+    let mut flags: HashMap<char, (Value2ValueFN, PredicateFn2PredicateFn)> = HashMap::new();
+
+    if let Some(f) = flag {
+        flags.insert(
+            'i',
+            (
+                |v| Value::Text((v).to_string().to_ascii_uppercase()),
+                |f| Box::new(move |arg: &dyn Filterable| f(&arg.to_string().to_ascii_uppercase())),
+            ),
+        );
+        flags.insert(NO_FLAG, (|v| v, |f| f));
+
+        return flags.get(&f).cloned().unwrap();
+    }
+    (|v| v, |f| f)
+}
+
 fn execs<'a>(
     op: &'a str,
     v: Value,
     flag: Option<char>,
     o: Option<&'a dyn Observer>,
 ) -> PredicateFnLt<'a> {
-    let mut value = v;
-    let mut flag_fn = None;
-    if let Some(f) = flag {
-        if f == 'i' {
-            value = Value::Text((value).to_string().to_ascii_uppercase());
-            flag_fn = Some(|f: PredicateFn| {
-                Box::new(move |arg: &dyn Filterable| f(&arg.to_string().to_ascii_uppercase()))
-            });
-        }
-    }
+    let (value_fn, predicate_fn) = flags_x(flag);
+    let value = value_fn(v);
 
     let mut execs: HashMap<&str, fn(Value) -> PredicateFn> = HashMap::new();
     execs.insert("=", eq);
@@ -54,21 +67,18 @@ fn execs<'a>(
     #[cfg(feature = "regex")]
     execs.insert("regex", regex);
 
-    let f = execs.get(op).unwrap();
-    let mut f = f(value.clone());
-
-    if let Some(ff) = flag_fn {
-        f = ff(f)
-    }
+    let op_fn = execs.get(op).unwrap();
+    let predicate = op_fn(value.clone());
+    let predicate = predicate_fn(predicate);
 
     if let Some(obs) = o {
         return Box::new(move |arg: &dyn Filterable| {
-            let result = (f)(arg);
+            let result = (predicate)(arg);
             obs.predicate(op, &value, arg, result);
             result
         });
     }
-    f
+    predicate
 }
 
 // ------------
