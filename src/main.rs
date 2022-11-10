@@ -4,11 +4,6 @@ use std::fmt::{Debug, Display};
 
 pub type PredicateFn = Box<dyn Fn(&dyn Filterable) -> bool>;
 
-/// Is the function for the given operator.
-/// e.g: Op: "=" -> function: |a,b| a == b
-type OpFn = fn(inner: &Value, arg: &dyn Filterable) -> bool;
-
-// ------------
 fn eq(v: Value) -> PredicateFn {
     Box::new(move |arg: &dyn Filterable| arg == &v)
 }
@@ -33,7 +28,7 @@ fn regex(v: Value) -> PredicateFn {
 type Value2ValueFN = fn(Value) -> Value;
 type PredicateFn2PredicateFn = fn(PredicateFn) -> PredicateFn;
 
-fn flags_x(flag: Option<char>) -> (Value2ValueFN, PredicateFn2PredicateFn) {
+fn flags_x(v: Value, flag: Option<char>) -> (Value, PredicateFn2PredicateFn) {
     let mut flags: HashMap<char, (Value2ValueFN, PredicateFn2PredicateFn)> = HashMap::new();
 
     if let Some(f) = flag {
@@ -44,11 +39,11 @@ fn flags_x(flag: Option<char>) -> (Value2ValueFN, PredicateFn2PredicateFn) {
                 |f| Box::new(move |arg: &dyn Filterable| f(&arg.to_string().to_ascii_uppercase())),
             ),
         );
-        flags.insert(NO_FLAG, (|v| v, |f| f));
 
-        return flags.get(&f).cloned().unwrap();
+        let (value_fn, predicate_fn) = flags.get(&f).cloned().unwrap();
+        return (value_fn(v), predicate_fn);
     }
-    (|v| v, |f| f)
+    (v, |f| f)
 }
 
 fn execs<'a>(
@@ -57,8 +52,7 @@ fn execs<'a>(
     flag: Option<char>,
     o: Option<&'a dyn Observer>,
 ) -> PredicateFnLt<'a> {
-    let (value_fn, predicate_fn) = flags_x(flag);
-    let value = value_fn(v);
+    let (value, predicate_fn) = flags_x(v, flag);
 
     let mut execs: HashMap<&str, fn(Value) -> PredicateFn> = HashMap::new();
     execs.insert("=", eq);
@@ -82,6 +76,10 @@ fn execs<'a>(
 }
 
 // ------------
+
+/// Is the function for the given operator.
+/// e.g: Op: "=" -> function: |a,b| a == b
+type OpFn = fn(inner: &Value, arg: &dyn Filterable) -> bool;
 
 fn ops(op: &'static str) -> OpFn {
     let mut ops: HashMap<&str, OpFn> = HashMap::new();
@@ -218,21 +216,20 @@ fn main() {
     let debug = debug.as_ref();
 
     // ------------------
-    let f = execs("len", Value::Int(4), None, Some(debug));
-    assert!(f(&"Blub"));
+    let len = execs("len", Value::Int(4), None, Some(debug));
 
     #[cfg(feature = "regex")]
     {
         let f = execs("regex", Value::Text(String::from("B.*")), None, Some(debug));
         assert!(f(&"Blub"));
     }
-    let f = execs(
+    let eq = execs(
         "=",
         Value::Text(String::from("bLUb")),
         Some('i'),
         Some(debug),
     );
-    assert!(f(&"Blub"));
+    assert!(and(&and(&len, &eq, Some(debug)), &eq, Some(debug))(&"Blub"));
 
     // ------------------
 
