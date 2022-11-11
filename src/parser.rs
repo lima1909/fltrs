@@ -35,8 +35,13 @@ impl<'a> Parser<'a> {
     }
 
     pub(crate) fn parse(mut self) -> Result<Exp> {
+        let observer = iws(&mut self, observer());
+
         let f = iws(&mut self, filter())?;
-        self.exp = Some(Exp::new(f));
+        self.exp = Some(Exp::new(
+            f,
+            observer.expect("observer result-string can not be an error"),
+        ));
 
         loop {
             if self.s.look_str(KW_OR) {
@@ -97,6 +102,15 @@ pub fn parse(input: &str) -> Result<Exp> {
     Parser::new(input).parse()
 }
 
+pub(crate) fn observer() -> impl FnMut(&mut Parser) -> Result<String> {
+    |parser: &mut Parser| {
+        if parser.take(":") {
+            return parser.take_while(is_not_ws);
+        }
+        Ok(String::new())
+    }
+}
+
 pub(crate) fn or() -> impl FnMut(&mut Parser) -> Result<()> {
     |parser: &mut Parser| {
         loop {
@@ -144,7 +158,11 @@ pub(crate) fn not() -> impl FnMut(&mut Parser) -> Result<Filter> {
                 Ok(Filter::Not(parse(&input)?))
             } else {
                 let p = predicate()(parser)?;
-                Ok(Filter::Not(Exp::new(Filter::Predicate(p))))
+                let observer = parser
+                    .exp
+                    .as_ref()
+                    .map_or(String::new(), |e| e.observer.to_string());
+                Ok(Filter::Not(Exp::new(Filter::Predicate(p), observer)))
             }
         } else {
             Err(parser.parse_err("expeted key word 'not'"))
@@ -734,5 +752,14 @@ mod test {
     #[test_case("= tru", ParseError {input: "= tru".into(),location: Location { line: 1, column: 2},err_msg: "expected input: 'true' not found".into()} ; "eq tru")]
     fn parse_err(input: &str, err: ParseError) {
         assert_eq!(err, parse(input).err().unwrap());
+    }
+
+    #[test_case("= 5", "" ; "no observer")]
+    #[test_case(": = 5", "" ; "empty observer")]
+    #[test_case(":debug = 5", "debug" ; "debug observer")]
+    #[test_case(":debug not(= 5)", "debug" ; "debug observer with not")]
+    fn parse_observer(input: &str, observer: &str) {
+        let exp = parse(input).unwrap();
+        assert_eq!(observer.to_string(), exp.observer);
     }
 }

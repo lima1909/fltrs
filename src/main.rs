@@ -1,23 +1,39 @@
-#![allow(dead_code)]
+#![allow(clippy::type_complexity)]
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 
 pub type PredicateFn = Box<dyn Fn(&dyn Filterable) -> bool>;
+pub type PredicateFnLt<'a> = Box<dyn Fn(&dyn Filterable) -> bool + 'a>;
 
-type Value2ValueFN = fn(Value) -> Value;
-type PredicateFn2PredicateFn = fn(PredicateFn) -> PredicateFn;
+static DEFAULT_OBSERVERS: &[(&str, fn() -> Box<dyn Observer>)] =
+    &[("debug", || Box::new(DebugObserver {}))];
 
-static DEFAULT_FLAGS: &[(char, Value2ValueFN, PredicateFn2PredicateFn)] = &[(
+fn observers(observer: &str) -> Option<Box<dyn Observer>> {
+    DEFAULT_OBSERVERS
+        .iter()
+        .find(|(name, _)| *name == observer)
+        .cloned()
+        .map(|(_, f)| f())
+}
+
+static DEFAULT_FLAGS: &[(char, fn(Value) -> Value, fn(PredicateFn) -> PredicateFn)] = &[(
     'i',
     |v| Value::Text((v).to_string().to_ascii_uppercase()),
     |f| Box::new(move |arg: &dyn Filterable| f(&arg.to_string().to_ascii_uppercase())),
 )];
 
-#[allow(clippy::type_complexity)]
-static DEFAULT_OBSERVERS: &[(&str, fn() -> Box<dyn Observer>)] =
-    &[("debug", || Box::new(DebugObserver {}))];
+fn flags(v: Value, flag: Option<char>) -> (Value, fn(PredicateFn) -> PredicateFn) {
+    if let Some(f) = flag {
+        return DEFAULT_FLAGS
+            .iter()
+            .find(|(flag, _, _)| flag == &f)
+            .cloned()
+            .map(|(_, vfn, pfn)| (vfn(v.clone()), pfn))
+            .unwrap_or((v, |f| f));
+    }
+    (v, |f| f)
+}
 
-#[allow(clippy::type_complexity)]
 static DEFAULT_OPS: &[(&str, fn(Value) -> PredicateFn)] = &[
     ("=", eq),
     ("!=", neq),
@@ -27,6 +43,13 @@ static DEFAULT_OPS: &[(&str, fn(Value) -> PredicateFn)] = &[
         ("regex", regex)
     },
 ];
+
+fn ops(op: &str, v: Value) -> Option<PredicateFn> {
+    DEFAULT_OPS
+        .iter()
+        .find(|(dop, _)| *dop == op)
+        .map(|(_, factory)| factory(v))
+}
 
 fn eq(v: Value) -> PredicateFn {
     Box::new(move |arg: &dyn Filterable| arg == &v)
@@ -49,32 +72,14 @@ fn regex(v: Value) -> PredicateFn {
     Box::new(move |arg: &dyn Filterable| regex.is_match(&arg.to_string()))
 }
 
-fn flags_x(v: Value, flag: Option<char>) -> (Value, PredicateFn2PredicateFn) {
-    if let Some(f) = flag {
-        let (value_fn, predicate_fn) = DEFAULT_FLAGS
-            .iter()
-            .find(|(flag, _, _)| flag == &f)
-            .cloned()
-            .map(|(_, vfn, pfn)| (vfn, pfn))
-            .unwrap();
-        return (value_fn(v), predicate_fn);
-    }
-    (v, |f| f)
-}
-
-fn execs<'a>(
+fn create<'a>(
     op: &'a str,
     v: Value,
     flag: Option<char>,
     o: Option<&'a dyn Observer>,
 ) -> PredicateFnLt<'a> {
-    let (value, predicate_fn) = flags_x(v, flag);
-    let factory = DEFAULT_OPS
-        .iter()
-        .find(|(dop, _)| *dop == op)
-        .map(|(_, factory)| factory);
-
-    let predicate = factory.unwrap()(value.clone());
+    let (value, predicate_fn) = flags(v, flag);
+    let predicate = ops(op, value.clone()).unwrap();
     let predicate = predicate_fn(predicate);
 
     if let Some(obs) = o {
@@ -93,7 +98,7 @@ fn execs<'a>(
 /// e.g: Op: "=" -> function: |a,b| a == b
 type OpFn = fn(inner: &Value, arg: &dyn Filterable) -> bool;
 
-fn ops(op: &'static str) -> OpFn {
+fn ops_old(op: &'static str) -> OpFn {
     let mut ops: HashMap<&str, OpFn> = HashMap::new();
     ops.insert("=", |inner: &Value, arg: &dyn Filterable| arg == inner);
     ops.insert("!=", |inner: &Value, arg: &dyn Filterable| arg != inner);
@@ -117,13 +122,11 @@ fn regex_old(inner: &Value, arg: &dyn Filterable) -> bool {
     rg.is_match(&arg.to_string())
 }
 
-pub type PredicateFnLt<'a> = Box<dyn Fn(&dyn Filterable) -> bool + 'a>;
-
 type FnFactory = fn(inner: Value, opfn: OpFn) -> PredicateFn;
 
 const NO_FLAG: char = ' ';
 
-fn flags(flag: Option<char>) -> FnFactory {
+fn flags_old(flag: Option<char>) -> FnFactory {
     if let Some(f) = flag {
         let mut flags: HashMap<char, FnFactory> = HashMap::new();
         flags.insert('i', flag_uppercase);
@@ -149,8 +152,8 @@ fn predicate<'a>(
     flag: Option<char>,
     o: Option<&'a dyn Observer>,
 ) -> PredicateFnLt<'a> {
-    let opfn = ops(op);
-    let factory = flags(flag);
+    let opfn = ops_old(op);
+    let factory = flags_old(flag);
 
     if let Some(o) = o {
         let f = (factory)(inner.clone(), opfn);
@@ -195,13 +198,6 @@ fn or<'a>(
     Box::new(move |arg: &dyn Filterable| left(arg) || right(arg))
 }
 
-fn observers(observer: &str) -> fn() -> Box<dyn Observer> {
-    let mut observers: HashMap<&str, fn() -> Box<dyn Observer>> = HashMap::new();
-    observers.insert("debug", || Box::new(DebugObserver {}));
-
-    observers.get(&observer).cloned().unwrap()
-}
-
 trait Observer {
     fn predicate(&self, op: &str, inner: &Value, arg: &dyn Filterable, result: bool);
     fn link(&self, link: &str, arg: &dyn Filterable, result: bool);
@@ -224,18 +220,18 @@ impl Observer for DebugObserver {
 fn main() {
     println!("Lets go ...");
 
-    let debug = observers("debug")();
+    let debug = observers("debug").unwrap();
     let debug = debug.as_ref();
 
     // ------------------
-    let len = execs("len", Value::Int(4), None, Some(debug));
+    let len = create("len", Value::Int(4), None, Some(debug));
 
     #[cfg(feature = "regex")]
     {
-        let f = execs("regex", Value::Text(String::from("B.*")), None, Some(debug));
+        let f = create("regex", Value::Text(String::from("B.*")), None, Some(debug));
         assert!(f(&"Blub"));
     }
-    let eq = execs(
+    let eq = create(
         "=",
         Value::Text(String::from("bLUb")),
         Some('i'),

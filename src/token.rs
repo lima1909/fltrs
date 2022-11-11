@@ -6,6 +6,7 @@ use core::fmt::{Debug, Display};
 pub struct Exp {
     index: usize,
     pub(crate) ands: Vec<Ands>,
+    pub(crate) observer: String,
 }
 
 impl Display for Exp {
@@ -28,10 +29,11 @@ impl Display for Exp {
 }
 
 impl Exp {
-    pub(crate) fn new(f: Filter) -> Self {
+    pub(crate) fn new(f: Filter, observer: String) -> Self {
         let mut ors = Self {
             index: 0,
             ands: vec![],
+            observer,
         };
         ors.ands.push(Ands::new(f));
         ors
