@@ -1,9 +1,9 @@
 #![allow(clippy::type_complexity)]
-use std::collections::HashMap;
-use std::fmt::{Debug, Display};
+#[cfg(feature = "regex")]
+use fltrs::AsString;
+use fltrs::{operator::text_value_to_uppercase, path_resolver, Filterable, PathResolver, Value};
 
 pub type PredicateFn = Box<dyn Fn(&dyn Filterable) -> bool>;
-pub type PredicateFnLt<'a> = Box<dyn Fn(&dyn Filterable) -> bool + 'a>;
 
 static DEFAULT_OBSERVERS: &[(&str, fn() -> Box<dyn Observer>)] =
     &[("debug", || Box::new(DebugObserver {}))];
@@ -18,8 +18,8 @@ fn observers(observer: &str) -> Option<Box<dyn Observer>> {
 
 static DEFAULT_FLAGS: &[(char, fn(Value) -> Value, fn(PredicateFn) -> PredicateFn)] = &[(
     'i',
-    |v| Value::Text((v).to_string().to_ascii_uppercase()),
-    |f| Box::new(move |arg: &dyn Filterable| f(&arg.to_string().to_ascii_uppercase())),
+    |v| text_value_to_uppercase(&v).unwrap(),
+    |f| Box::new(move |arg: &dyn Filterable| f(&arg.as_string().to_ascii_uppercase())),
 )];
 
 fn flags(v: Value, flag: Option<char>) -> (Value, fn(PredicateFn) -> PredicateFn) {
@@ -63,144 +63,75 @@ fn len(v: Value) -> PredicateFn {
     let Value::Int(l) = v else {
         return Box::new(move |_: &dyn Filterable| false);
     };
-    Box::new(move |arg: &dyn Filterable| arg.to_string().len() == l as usize)
+    Box::new(move |arg: &dyn Filterable| arg.as_string().len() == l as usize)
 }
 
 #[cfg(feature = "regex")]
 fn regex(v: Value) -> PredicateFn {
-    let regex = regex::Regex::new(&v.to_string()).unwrap();
-    Box::new(move |arg: &dyn Filterable| regex.is_match(&arg.to_string()))
+    let regex = regex::Regex::new(&v.as_string()).unwrap();
+    Box::new(move |arg: &dyn Filterable| regex.is_match(&arg.as_string()))
 }
 
-fn create<'a>(
+pub type PredicateFnLt<'a, PR> = Box<dyn Fn(&PR) -> bool + 'a>;
+
+fn create<'a, PR: PathResolver>(
+    path: &'a str,
     op: &'a str,
-    v: Value,
     flag: Option<char>,
+    v: Value,
     o: Option<&'a dyn Observer>,
-) -> PredicateFnLt<'a> {
+) -> PredicateFnLt<'a, PR> {
     let (value, predicate_fn) = flags(v, flag);
     let predicate = ops(op, value.clone()).unwrap();
     let predicate = predicate_fn(predicate);
 
+    let idx = PR::idx(path).unwrap();
+
     if let Some(obs) = o {
-        return Box::new(move |arg: &dyn Filterable| {
+        return Box::new(move |pr: &PR| {
+            let arg = pr.value(idx);
             let result = (predicate)(arg);
             obs.predicate(op, &value, arg, result);
             result
         });
     }
-    predicate
+
+    Box::new(move |pr: &PR| predicate(pr.value(idx)))
 }
 
-// ------------------------------------------------------------------------------------
-
-/// Is the function for the given operator.
-/// e.g: Op: "=" -> function: |a,b| a == b
-type OpFn = fn(inner: &Value, arg: &dyn Filterable) -> bool;
-
-fn ops_old(op: &'static str) -> OpFn {
-    let mut ops: HashMap<&str, OpFn> = HashMap::new();
-    ops.insert("=", |inner: &Value, arg: &dyn Filterable| arg == inner);
-    ops.insert("!=", |inner: &Value, arg: &dyn Filterable| arg != inner);
-    ops.insert("len", op_len);
-    #[cfg(feature = "regex")]
-    ops.insert("regex", regex_old);
-
-    *ops.get(op).unwrap()
-}
-
-fn op_len(inner: &Value, arg: &dyn Filterable) -> bool {
-    if let Value::Int(l) = inner {
-        return arg.to_string().len() == *l as usize;
-    }
-    false
-}
-
-#[cfg(feature = "regex")]
-fn regex_old(inner: &Value, arg: &dyn Filterable) -> bool {
-    let rg = regex::Regex::new(&inner.to_string()).unwrap();
-    rg.is_match(&arg.to_string())
-}
-
-type FnFactory = fn(inner: Value, opfn: OpFn) -> PredicateFn;
-
-const NO_FLAG: char = ' ';
-
-fn flags_old(flag: Option<char>) -> FnFactory {
-    if let Some(f) = flag {
-        let mut flags: HashMap<char, FnFactory> = HashMap::new();
-        flags.insert('i', flag_uppercase);
-        flags.insert(NO_FLAG, no_flag);
-
-        return flags.get(&f).cloned().unwrap();
-    }
-    no_flag
-}
-
-fn flag_uppercase(inner: Value, opfn: OpFn) -> PredicateFn {
-    let inner = Value::Text((inner).to_string().to_ascii_uppercase());
-    Box::new(move |f: &dyn Filterable| (opfn)(&inner, &f.to_string().to_ascii_uppercase()))
-}
-
-fn no_flag(inner: Value, opfn: OpFn) -> PredicateFn {
-    Box::new(move |f: &dyn Filterable| (opfn)(&inner, f))
-}
-
-fn predicate<'a>(
-    inner: Value,
-    op: &'static str,
-    flag: Option<char>,
+fn and<'a, PR>(
+    left: &'a PredicateFnLt<'a, PR>,
+    right: &'a PredicateFnLt<'a, PR>,
     o: Option<&'a dyn Observer>,
-) -> PredicateFnLt<'a> {
-    let opfn = ops_old(op);
-    let factory = flags_old(flag);
-
+) -> PredicateFnLt<'a, PR> {
     if let Some(o) = o {
-        let f = (factory)(inner.clone(), opfn);
-
-        return Box::new(move |arg: &dyn Filterable| {
-            let result = (f)(arg);
-            o.predicate(op, &inner, arg, result);
-            result
-        });
-    }
-
-    (factory)(inner, opfn)
-}
-
-fn and<'a>(
-    left: &'a PredicateFnLt<'a>,
-    right: &'a PredicateFnLt<'a>,
-    o: Option<&'a dyn Observer>,
-) -> PredicateFnLt<'a> {
-    if let Some(o) = o {
-        return Box::new(move |arg: &dyn Filterable| {
+        return Box::new(move |arg: &PR| {
             let result = left(arg) && right(arg);
-            o.link("AND", arg, result);
+            o.link("AND", result);
             result
         });
     }
-    Box::new(move |arg: &dyn Filterable| left(arg) && right(arg))
+    Box::new(move |arg: &PR| left(arg) && right(arg))
 }
 
-fn or<'a>(
-    left: &'a PredicateFnLt<'a>,
-    right: &'a PredicateFnLt<'a>,
+fn or<'a, PR>(
+    left: &'a PredicateFnLt<'a, PR>,
+    right: &'a PredicateFnLt<'a, PR>,
     o: Option<&'a dyn Observer>,
-) -> PredicateFnLt<'a> {
+) -> PredicateFnLt<'a, PR> {
     if let Some(o) = o {
-        return Box::new(move |arg: &dyn Filterable| {
+        return Box::new(move |arg: &PR| {
             let result = left(arg) || right(arg);
-            o.link("OR", arg, result);
+            o.link("OR", result);
             result
         });
     }
-    Box::new(move |arg: &dyn Filterable| left(arg) || right(arg))
+    Box::new(move |arg: &PR| left(arg) || right(arg))
 }
 
 trait Observer {
     fn predicate(&self, op: &str, inner: &Value, arg: &dyn Filterable, result: bool);
-    fn link(&self, link: &str, arg: &dyn Filterable, result: bool);
+    fn link(&self, link: &str, result: bool);
 }
 
 struct DebugObserver;
@@ -209,10 +140,10 @@ struct DebugObserver;
 // "Blub" [=i "blub"] ["BLUB" = "BLUB"] (true)
 impl Observer for DebugObserver {
     fn predicate(&self, op: &str, inner: &Value, arg: &dyn Filterable, result: bool) {
-        print!("{arg}: {op} {inner} [{result}] ");
+        print!("{}: {op} {inner} [{result}] ", arg.as_string());
     }
 
-    fn link(&self, link: &str, _arg: &dyn Filterable, result: bool) {
+    fn link(&self, link: &str, result: bool) {
         print!("{link} [{result}] ");
     }
 }
@@ -224,164 +155,50 @@ fn main() {
     let debug = debug.as_ref();
 
     // ------------------
-    let len = create("len", Value::Int(4), None, Some(debug));
+    let len = create("", "len", None, Value::Int(4), Some(debug));
 
     #[cfg(feature = "regex")]
     {
-        let f = create("regex", Value::Text(String::from("B.*")), None, Some(debug));
-        assert!(f(&"Blub"));
+        let rgx = create(
+            "",
+            "regex",
+            None,
+            Value::Text(String::from("B.*")),
+            Some(debug),
+        );
+        assert!(and(&rgx, &len, Some(debug))(&"Blub"));
+        println!();
     }
     let eq = create(
+        "self",
         "=",
-        Value::Text(String::from("bLUb")),
         Some('i'),
+        Value::Text(String::from("bLUb")),
         Some(debug),
     );
     assert!(and(&and(&len, &eq, Some(debug)), &eq, Some(debug))(&"Blub"));
+    println!();
 
-    // ------------------
-
-    #[cfg(feature = "regex")]
-    {
-        let reg = predicate(Value::Text(String::from("B.*")), "regex", None, None);
-        assert!(reg(&"Blub"));
-        assert!(reg(&"B"));
-    }
-
-    let f0 = predicate(Value::Text(String::from("Blub")), "=", None, None);
-    assert!(f0(&"Blub"));
-
-    let f1 = predicate(
-        Value::Text(String::from("blub")),
+    let eq = create(
+        "name",
         "=",
         Some('i'),
+        Value::Text("Mario".to_string()),
         Some(debug),
     );
-    let f2 = predicate(Value::Int(3), "len", None, Some(debug));
+    let neq = create("x", "!=", None, Value::Int(1), Some(debug));
 
-    println!("\n-------------------");
-    assert!(!and(&f1, &f2, Some(debug))(&"Blub"));
-    println!();
-    assert!(!and(&f2, &f1, Some(debug))(&"Blub"));
-
-    println!();
-    assert!(or(&f1, &f2, Some(debug))(&"Blub"));
-    println!();
-    assert!(or(&f2, &f1, Some(debug))(&"Blub"));
+    assert!((or(&neq, &eq, Some(debug)))(&Point {
+        name: "MariO",
+        x: 1,
+        y: 2
+    }));
 }
 
-// ---------------------------------------------------------
-#[derive(Clone, Debug)]
-pub enum Value {
-    Int(i32),
-    Text(String),
+struct Point {
+    name: &'static str,
+    x: i32,
+    y: i32,
 }
 
-impl Display for Value {
-    fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Value::Int(v) => write!(fm, "{}", v),
-            Value::Text(v) => write!(fm, "{}", v),
-        }
-    }
-}
-
-impl PartialEq<Value> for i32 {
-    fn eq(&self, other: &Value) -> bool {
-        if let Value::Int(v) = other {
-            return v == self;
-        }
-        false
-    }
-}
-
-impl PartialEq<Value> for String {
-    fn eq(&self, other: &Value) -> bool {
-        if let Value::Text(t) = other {
-            return t == self;
-        }
-        false
-    }
-}
-
-impl PartialEq<Value> for str {
-    fn eq(&self, other: &Value) -> bool {
-        if let Value::Text(t) = other {
-            return t == self;
-        }
-        false
-    }
-}
-
-impl PartialEq<Value> for &str {
-    fn eq(&self, other: &Value) -> bool {
-        if let Value::Text(t) = other {
-            return t == self;
-        }
-        false
-    }
-}
-
-impl PartialEq<String> for Value {
-    fn eq(&self, s: &String) -> bool {
-        if let Value::Text(t) = self {
-            return t == s;
-        }
-        false
-    }
-}
-
-impl PartialEq<str> for Value {
-    fn eq(&self, s: &str) -> bool {
-        if let Value::Text(t) = self {
-            return t == s;
-        }
-        false
-    }
-}
-
-impl PartialEq<&str> for Value {
-    fn eq(&self, s: &&str) -> bool {
-        if let Value::Text(t) = self {
-            return t == s;
-        }
-        false
-    }
-}
-
-pub trait Filterable: PartialEq<Value> + Display {}
-
-impl<V: PartialEq<Value> + Display> Filterable for V {}
-
-// trait Executor<Arg>: Clone {
-//     fn exec(&self, arg: &Arg) -> bool;
-// }
-
-// #[derive(Clone)]
-// struct And<L, R> {
-//     left: L,
-//     right: R,
-// }
-
-// impl<L, R, Arg> Executor<Arg> for And<L, R>
-// where
-//     Arg: PartialEq,
-//     L: Executor<Arg>,
-//     R: Executor<Arg>,
-// {
-//     fn exec(&self, arg: &Arg) -> bool {
-//         self.left.exec(arg) && self.right.exec(arg)
-//     }
-// }
-
-// trait Query {
-//     fn and<Q>(self, other: Q) -> And<Self, Q>
-//     where
-//         Self: Sized,
-//     {
-//         And {
-//             left: self,
-//             right: other,
-//         }
-//     }
-// }
+path_resolver!(Point: name, x, y);
