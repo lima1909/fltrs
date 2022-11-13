@@ -47,17 +47,8 @@ fn from_filter<PR: PathResolver + 'static>(
     match filter {
         Filter::Predicate(p) => {
             let path = p.path.unwrap_or_default();
-            let idx = PR::pathes()
-                .iter()
-                .enumerate()
-                .find(|(_, p)| **p == path)
-                .map(|(idx, _)| idx)
-                .ok_or_else(|| {
-                    FltrError(format!(
-                        "invalid path: '{}' for value: '{}'",
-                        path, &p.value
-                    ))
-                })?;
+            let idx = PR::idx(&path)
+                .map_err(|err| FltrError(format!("{} for value: '{}'", err, p.value)))?;
             ops.get(&p.op, idx, p.value)
         }
         Filter::Not(exp) => Ok(Not(query(exp, ops)?).into()),

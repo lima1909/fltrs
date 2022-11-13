@@ -200,6 +200,15 @@ pub trait PathResolver {
     fn pathes() -> &'static [&'static str];
     /// The value of the struct field for the given index of [`PathResolver::pathes`] .
     fn value(&self, idx: usize) -> &dyn Filterable;
+
+    fn idx(path: &str) -> Result<usize> {
+        Self::pathes()
+            .iter()
+            .enumerate()
+            .find(|(_, p)| **p == path)
+            .map(|(idx, _)| idx)
+            .ok_or_else(|| FltrError(format!("invalid path: '{}'", path)))
+    }
 }
 
 impl<F: Filterable> PathResolver for F {
