@@ -29,7 +29,7 @@ impl<'a> Parser<'a> {
         Parser {
             exp: None,
             s: Scanner::new(input),
-            ops: Operators::<bool>::default().get_ops_names(),
+            ops: Operators::default().ops_names(),
             as_value_fns: vec![],
         }
     }

@@ -114,7 +114,7 @@
 //! assert_eq!(vec![Point { name: "Point_3_3", x: 3, y: 3}], result);
 //! ```
 //!
-
+#![allow(clippy::type_complexity)]
 pub mod error;
 pub mod operator;
 mod parser;
@@ -126,7 +126,7 @@ pub mod value;
 pub use crate::error::FltrError;
 pub use crate::value::Value;
 
-use crate::operator::{Operator, OperatorFn, Operators};
+use crate::operator::{Operator, Operators, PredicateFn};
 use crate::parser::{parse, AsValueFn, Parser};
 
 /// The default [`core::result::Result`] with the error: [`FltrError`].
@@ -321,7 +321,7 @@ pub type Predicate<PR> = Box<dyn Fn(&PR) -> bool>;
 /// );
 /// ```
 pub fn query<PR: PathResolver + 'static>(query: &str) -> Result<Predicate<PR>> {
-    crate::query::query(parse(query)?, &Operators::<PR>::default())
+    crate::query::query(parse(query)?, &Operators::default())
 }
 
 /// Create a [`Predicate`] with which you can
@@ -341,7 +341,7 @@ pub fn query<PR: PathResolver + 'static>(query: &str) -> Result<Predicate<PR>> {
 /// );
 /// ```
 pub fn query_ref<PR: PathResolver + 'static>(query: &str) -> Result<impl Fn(&&PR) -> bool> {
-    let f = crate::query::query(parse(query)?, &Operators::<PR>::default())?;
+    let f = crate::query::query(parse(query)?, &Operators::default())?;
     Ok(move |pr: &&PR| f(*pr))
 }
 
@@ -352,17 +352,17 @@ pub fn query_ref<PR: PathResolver + 'static>(query: &str) -> Result<impl Fn(&&PR
 /// Create your own operator:
 ///
 /// ```
-/// use fltrs::{value::Value, PathResolver, Predicate, Query, Result, query, operator::FlagResolver};
+/// use fltrs::{Filterable, PathResolver, Predicate, Query, Result, query};
+/// use fltrs::operator::PredicateFn;
+/// use fltrs::value::Value;
 ///
-/// fn upper_eq<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
-///     Ok(Box::new(
-///         move |pr| {
-///             fr.handle(pr, |f, v| match v {
-///                 Value::Text(t) => f.as_string().to_uppercase().eq(&t.to_uppercase()),
-///                 _ => false,
-///             })
-///         }
-///     ))
+/// fn upper_eq(v: Value) -> Result<PredicateFn> {
+///   match v {
+///     Value::Text(t) => Ok(Box::new(move |f: &dyn Filterable| {
+///         f.as_string().to_uppercase().eq(&t.to_uppercase())
+///     })),
+///     _ => Ok(Box::new(move |_: &dyn Filterable| false)),
+///   }
 /// }
 ///
 /// let query = Query::build()
@@ -399,12 +399,12 @@ pub fn query_ref<PR: PathResolver + 'static>(query: &str) -> Result<impl Fn(&&PR
 ///
 /// ```
 
-pub struct Query<PR> {
-    ops: Operators<PR>,
+pub struct Query {
+    ops: Operators,
     as_value_fn: Vec<(&'static str, AsValueFn)>,
 }
 
-impl<PR: PathResolver + 'static> Query<PR> {
+impl Query {
     pub fn build() -> Self {
         Self {
             ops: Operators::default(),
@@ -412,7 +412,7 @@ impl<PR: PathResolver + 'static> Query<PR> {
         }
     }
 
-    pub fn operators(mut self, ops: &[(&'static str, OperatorFn<PR>)]) -> Self {
+    pub fn operators(mut self, ops: &[(&'static str, fn(Value) -> Result<PredicateFn>)]) -> Self {
         self.ops.ops = ops
             .iter()
             .map(|(n, op)| Operator::new(n, *op, &[]))
@@ -425,9 +425,9 @@ impl<PR: PathResolver + 'static> Query<PR> {
         self
     }
 
-    pub fn query(&self, query: &str) -> Result<Predicate<PR>> {
+    pub fn query<PR: PathResolver + 'static>(&self, query: &str) -> Result<Predicate<PR>> {
         let mut p = Parser::new(query);
-        p.ops = self.ops.get_ops_names();
+        p.ops = self.ops.ops_names();
         p.as_value_fns = self.as_value_fn.clone();
         crate::query::query(p.parse()?, &self.ops)
     }
@@ -699,7 +699,7 @@ mod test {
     fn into_iter_greater_int_case_intensitive_err() {
         assert_eq!(
             query::<i32>(">:i 2").err().unwrap(),
-            FltrError("the flag: 'i' supported only 'String' and 'char' values, not: '2'".into())
+            FltrError("the operation '>' with the flag: 'i' supported only 'String' and 'char' values, not: '2'".into())
         )
     }
 
@@ -708,7 +708,7 @@ mod test {
         assert_eq!(
             query::<i32>("one_of:i [7, 9]").err().unwrap(),
             FltrError(
-                "the flag: 'i' supported only 'String' and 'char' values, not: '[Int(7), Int(9)]'"
+                "the operation 'one_of' with the flag: 'i' supported only 'String' and 'char' values, not: '[Int(7), Int(9)]'"
                     .into()
             )
         )
@@ -718,7 +718,7 @@ mod test {
     fn into_iter_len_case_intensitive_err() {
         assert_eq!(
             query::<&str>("len:i 3").err().unwrap(),
-            FltrError("the flag: 'i' is for operator 'len' not supported".into())
+            FltrError("the operation 'len' with the flag: 'i' supported only 'String' and 'char' values, not: '3'".into())
         )
     }
 }

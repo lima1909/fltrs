@@ -24,128 +24,20 @@
 //! | `i`  | case insensitive |`=:i "ab"`<br /> (`ab, aB, Ab, AB`)  | this flag supported only `String`, `str` or `char` values |
 //!
 //!
-use crate::token::Op;
-use crate::{AsString, Filterable, FltrError, PathResolver, Predicate, Result, Value};
+#![allow(clippy::type_complexity)]
+use crate::{AsString, Filterable, FltrError, Result, Value};
 
-pub type OperatorFn<PR> = fn(fr: FlagResolver) -> Result<Predicate<PR>>;
+pub type PredicateFn = Box<dyn Fn(&dyn Filterable) -> bool>;
 
-pub struct Operator<PR> {
-    name: &'static str,
-    f: OperatorFn<PR>,
-    supported_flags: Vec<char>,
-}
-
-impl<PR> Operator<PR> {
-    pub fn new(name: &'static str, f: OperatorFn<PR>, flags: &[char]) -> Self {
-        Self {
-            name,
-            f,
-            supported_flags: Vec::from(flags),
-        }
-    }
-}
-
-pub struct Operators<PR> {
-    pub(crate) ops: Vec<Operator<PR>>,
-}
-
-impl<PR: PathResolver> Default for Operators<PR> {
-    fn default() -> Self {
-        Self {
-            ops: vec![
-                (Operator::new("==", eq, &['i'])),
-                (Operator::new("=", eq, &['i'])),
-                (Operator::new("!=", ne, &['i'])),
-                (Operator::new("<=", le, &['i'])),
-                (Operator::new("<", lt, &['i'])),
-                (Operator::new(">=", ge, &['i'])),
-                (Operator::new(">", gt, &['i'])),
-                (Operator::new("contains", contains, &['i'])),
-                (Operator::new("starts_with", starts_with, &['i'])),
-                (Operator::new("ends_with", ends_with, &['i'])),
-                (Operator::new("one_of", one_of, &['i'])),
-                (Operator::new("len", len, &[])),
-                #[cfg(feature = "regex")]
-                (Operator::new("regex", regex, &[])),
-            ],
-        }
-    }
-}
-
-impl<PR: PathResolver> Operators<PR> {
-    pub fn get(&self, op: &Op, idx: usize, v: Value) -> Result<Predicate<PR>> {
-        if let Some(o) = self.ops.iter().find(|current| current.name == op.name) {
-            let create = o.f;
-            return create(FlagResolver::new(idx, v, op, &o.supported_flags)?);
-        }
-        Err(FltrError(format!("invalid operation: '{}'", op)))
-    }
-
-    pub fn get_ops_names(&self) -> Vec<&'static str> {
-        self.ops.iter().map(|op| op.name).collect()
-    }
-}
-
-const NO_FLAG: char = ' ';
-
-pub struct FlagResolver {
-    idx: usize,
-    value: Value,
-    flag: char,
-}
-
-impl FlagResolver {
-    pub fn new(idx: usize, value: Value, op: &Op, flags: &[char]) -> Result<Self> {
-        Ok(Self {
-            idx,
-            value: FlagResolver::check_flag(value, op, flags)?,
-            flag: if let Some(c) = op.flag { c } else { NO_FLAG },
-        })
-    }
-
-    pub fn check_flag(value: Value, op: &Op, flags: &[char]) -> Result<Value> {
-        if let Some(c) = op.flag {
-            if flags.contains(&c) {
-                match c {
-                    'i' => {
-                        return text_value_to_uppercase(&value).ok_or_else(|| {
-                            FltrError(format!(
-                                "the flag: '{c}' supported only 'String' and 'char' values, not: '{value}'"
-                            ))
-                        });
-                    }
-                    _ => {
-                        return Err(FltrError(format!(
-                            "unimplemented flag: '{c}' for operator '{}'",
-                            op.name
-                        )));
-                    }
-                }
-            } else {
-                return Err(FltrError(format!(
-                    "the flag: '{c}' is for operator '{}' not supported",
-                    op.name
-                )));
-            }
-        }
-
-        Ok(value)
-    }
-
-    pub fn handle<PR: PathResolver, Handler: Fn(&dyn Filterable, &Value) -> bool>(
-        &self,
-        pr: &PR,
-        h: Handler,
-    ) -> bool {
-        match self.flag {
-            'i' => h(
-                &pr.value(self.idx).as_string().to_ascii_uppercase(),
-                &self.value,
-            ),
-            _ => h(pr.value(self.idx), &self.value),
-        }
-    }
-}
+static DEFAULT_FLAGS: &[(
+    char,
+    fn(Value) -> Option<Value>,
+    fn(PredicateFn) -> PredicateFn,
+)] = &[(
+    'i',
+    |v| text_value_to_uppercase(&v),
+    |f| Box::new(move |arg: &dyn Filterable| f(&arg.as_string().to_ascii_uppercase())),
+)];
 
 pub fn text_value_to_uppercase(value: &Value) -> Option<Value> {
     match value {
@@ -166,88 +58,174 @@ pub fn text_value_to_uppercase(value: &Value) -> Option<Value> {
     }
 }
 
+pub fn flags(v: Value, flag: Option<char>) -> Result<(Value, fn(PredicateFn) -> PredicateFn)> {
+    if let Some(f) = flag {
+        for (flag, vfn, pfn) in DEFAULT_FLAGS {
+            if flag == &f {
+                let value = vfn(v.clone()).ok_or_else(|| {
+                    FltrError(format!(
+                        "the flag: '{f}' supported only 'String' and 'char' values, not: '{v}'"
+                    ))
+                })?;
+                return Ok((value, *pfn));
+            }
+        }
+        return Err(FltrError(format!("the flag: '{f}' is not supported",)));
+    }
+
+    Ok((v, |f| f))
+}
+
+static DEFAULT_OPS: &[Operator] = &[
+    Operator::new("==", eq, &['i']),
+    Operator::new("=", eq, &['i']),
+    Operator::new("!=", ne, &['i']),
+    Operator::new("<=", le, &['i']),
+    Operator::new("<", lt, &['i']),
+    Operator::new(">=", ge, &['i']),
+    Operator::new(">", gt, &['i']),
+    Operator::new("contains", contains, &['i']),
+    Operator::new("starts_with", starts_with, &['i']),
+    Operator::new("ends_with", ends_with, &['i']),
+    Operator::new("one_of", one_of, &['i']),
+    Operator::new("len", len, &[]),
+    #[cfg(feature = "regex")]
+    (Operator::new("regex", regex, &[])),
+];
+
+#[derive(Clone)]
+pub struct Operator {
+    name: &'static str,
+    f: fn(Value) -> Result<PredicateFn>,
+    flags: &'static [char],
+}
+
+impl Operator {
+    pub const fn new(
+        name: &'static str,
+        f: fn(Value) -> Result<PredicateFn>,
+        flags: &'static [char],
+    ) -> Self {
+        Self { name, f, flags }
+    }
+
+    pub const fn flags(&self) -> &[char] {
+        self.flags
+    }
+}
+
+pub struct Operators {
+    pub(crate) ops: Vec<Operator>,
+}
+
+impl Default for Operators {
+    fn default() -> Self {
+        Self {
+            ops: Vec::from(DEFAULT_OPS),
+        }
+    }
+}
+
+impl Operators {
+    pub fn ops(&self, op: &str, v: Value) -> Result<PredicateFn> {
+        self.ops
+            .iter()
+            .find(|dop| dop.name == op)
+            .map(|dop| (dop.f)(v))
+            .unwrap_or_else(|| Err(FltrError(format!("invalid operation: '{}'", op))))
+    }
+
+    pub fn ops_names(&self) -> Vec<&'static str> {
+        self.ops.iter().map(|dop| dop.name).collect()
+    }
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // Operator implementations
 ///////////////////////////////////////////////////////////////////////////////
-fn eq<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| fr.handle(pr, |f, v| f == v)))
+fn eq(v: Value) -> Result<PredicateFn> {
+    Ok(Box::new(move |arg: &dyn Filterable| arg == &v))
 }
 
-fn ne<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| fr.handle(pr, |f, v| f != v)))
+fn ne(v: Value) -> Result<PredicateFn> {
+    Ok(Box::new(move |arg: &dyn Filterable| arg != &v))
 }
 
-fn le<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| fr.handle(pr, |f, v| f.le(v))))
+fn le(v: Value) -> Result<PredicateFn> {
+    Ok(Box::new(move |arg: &dyn Filterable| arg.le(&v)))
 }
 
-fn lt<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| fr.handle(pr, |f, v| f.lt(v))))
+fn lt(v: Value) -> Result<PredicateFn> {
+    Ok(Box::new(move |arg: &dyn Filterable| arg.lt(&v)))
 }
 
-fn ge<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| fr.handle(pr, |f, v| f.ge(v))))
+fn ge(v: Value) -> Result<PredicateFn> {
+    Ok(Box::new(move |arg: &dyn Filterable| arg.ge(&v)))
 }
 
-fn gt<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| fr.handle(pr, |f, v| f.gt(v))))
+fn gt(v: Value) -> Result<PredicateFn> {
+    Ok(Box::new(move |arg: &dyn Filterable| arg.gt(&v)))
 }
 
-fn len<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| {
-        fr.handle(pr, |f, v| match v {
-            Value::Int(l) => f.as_string().len() == *l as usize,
-            _ => false,
-        })
+fn len(v: Value) -> Result<PredicateFn> {
+    let Value::Int(l) = v else {
+        return Ok(Box::new(move |_: &dyn Filterable| false));
+    };
+    Ok(Box::new(move |arg: &dyn Filterable| {
+        arg.as_string().len() == l as usize
     }))
 }
 
-fn contains<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| {
-        fr.handle(pr, |f, v| match v {
-            Value::Text(t) => f.as_string().contains(t),
-            Value::Char(c) => f.as_string().contains(*c),
-            _ => false,
-        })
-    }))
+fn contains(v: Value) -> Result<PredicateFn> {
+    match v {
+        Value::Text(t) => Ok(Box::new(move |f: &dyn Filterable| {
+            f.as_string().contains(&t)
+        })),
+        Value::Char(c) => Ok(Box::new(move |f: &dyn Filterable| {
+            f.as_string().contains(c)
+        })),
+        _ => Ok(Box::new(move |_: &dyn Filterable| false)),
+    }
 }
 
-fn starts_with<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| {
-        fr.handle(pr, |f, v| match v {
-            Value::Text(t) => f.as_string().starts_with(t),
-            Value::Char(c) => f.as_string().starts_with(*c),
-            _ => false,
-        })
-    }))
+fn starts_with(v: Value) -> Result<PredicateFn> {
+    match v {
+        Value::Text(t) => Ok(Box::new(move |f: &dyn Filterable| {
+            f.as_string().starts_with(&t)
+        })),
+        Value::Char(c) => Ok(Box::new(move |f: &dyn Filterable| {
+            f.as_string().starts_with(c)
+        })),
+        _ => Ok(Box::new(move |_: &dyn Filterable| false)),
+    }
 }
 
-fn ends_with<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| {
-        fr.handle(pr, |f, v| match v {
-            Value::Text(t) => f.as_string().ends_with(t),
-            Value::Char(c) => f.as_string().ends_with(*c),
-            _ => false,
-        })
-    }))
+fn ends_with(v: Value) -> Result<PredicateFn> {
+    match v {
+        Value::Text(t) => Ok(Box::new(move |f: &dyn Filterable| {
+            f.as_string().ends_with(&t)
+        })),
+        Value::Char(c) => Ok(Box::new(move |f: &dyn Filterable| {
+            f.as_string().ends_with(c)
+        })),
+        _ => Ok(Box::new(move |_: &dyn Filterable| false)),
+    }
 }
 
-fn one_of<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
-    Ok(Box::new(move |pr| {
-        fr.handle(pr, |f, v| {
-            if let Value::List(vs) = v {
-                return vs.iter().any(|value| f.eq(value));
-            }
-            f.eq(v)
-        })
-    }))
+fn one_of(v: Value) -> Result<PredicateFn> {
+    if let Value::List(vs) = v {
+        return Ok(Box::new(move |f: &dyn Filterable| {
+            vs.iter().any(|value| f.eq(value))
+        }));
+    }
+    Ok(Box::new(move |f: &dyn Filterable| f.eq(&v)))
 }
 
 #[cfg(feature = "regex")]
-fn regex<PR: PathResolver>(fr: FlagResolver) -> Result<Predicate<PR>> {
-    let rg = regex::Regex::new(&fr.value.as_string()).or_else(|e| Err(FltrError(e.to_string())))?;
-    Ok(Box::new(move |pr| {
-        fr.handle(pr, |f, _v| rg.is_match(&f.as_string()))
+fn regex(v: Value) -> Result<PredicateFn> {
+    let regex = regex::Regex::new(&v.as_string()).or_else(|e| Err(FltrError(e.to_string())))?;
+    Ok(Box::new(move |arg: &dyn Filterable| {
+        regex.is_match(&arg.as_string())
     }))
 }
 
@@ -258,122 +236,108 @@ mod test {
 
     #[test]
     fn get() {
-        let op = Operators::<bool>::default();
-        assert!(op.get(&Op::from_str("="), 0, Value::Bool(true)).is_ok());
-        assert!(op.get(&Op::from_str("foo"), 0, Value::Bool(true)).is_err());
+        assert!(Operators::default().ops("=", Value::Bool(true)).is_ok());
+        assert!(Operators::default().ops("foo", Value::Bool(true)).is_err());
     }
 
     #[test]
     fn exec_bool() {
-        let op = Operators::default();
-        let ne = op.get(&Op::from_str("!="), 0, Value::Bool(false)).unwrap();
+        let ne = Operators::default().ops("!=", Value::Bool(false)).unwrap();
         assert!((ne)(&true));
     }
 
     #[test]
     fn exec_len_string() {
-        let op = Operators::default();
-        let len = op.get(&Op::from_str("len"), 0, Value::Int(4)).unwrap();
+        let len = Operators::default().ops("len", Value::Int(4)).unwrap();
         assert!((len)(&String::from("Paul")));
     }
 
     #[test]
     fn exec_len_str() {
-        let op = Operators::default();
-        let len = op.get(&Op::from_str("len"), 0, Value::Int(4)).unwrap();
+        let len = Operators::default().ops("len", Value::Int(4)).unwrap();
         assert!((len)(&"Paul"));
     }
 
     #[test]
     fn exec_contains_str() {
-        let op = Operators::default();
-        let starts_with = op
-            .get(&Op::from_str("contains"), 0, Value::Text("au".into()))
+        let starts_with = Operators::default()
+            .ops("contains", Value::Text("au".into()))
             .unwrap();
         assert!((starts_with)(&"Paul"));
     }
 
     #[test]
     fn exec_contains_char() {
-        let op = Operators::default();
-        let contains = op
-            .get(&Op::from_str("contains"), 0, Value::Char('u'))
+        let contains = Operators::default()
+            .ops("contains", Value::Char('u'))
             .unwrap();
         assert!((contains)(&"Paul"));
     }
 
     #[test]
     fn exec_starts_with_str() {
-        let op = Operators::default();
-        let starts_with = op
-            .get(&Op::from_str("starts_with"), 0, Value::Text("Pa".into()))
+        let starts_with = Operators::default()
+            .ops("starts_with", Value::Text("Pa".into()))
             .unwrap();
         assert!((starts_with)(&"Paul"));
     }
 
     #[test]
     fn exec_starts_with_char() {
-        let op = Operators::default();
-        let starts_with = op
-            .get(&Op::from_str("starts_with"), 0, Value::Char('P'))
+        let starts_with = Operators::default()
+            .ops("starts_with", Value::Char('P'))
             .unwrap();
         assert!((starts_with)(&"Paul"));
     }
 
     #[test]
     fn exec_ends_with_str() {
-        let op = Operators::default();
-        let ends_with = op
-            .get(&Op::from_str("ends_with"), 0, Value::Text("aul".into()))
+        let ends_with = Operators::default()
+            .ops("ends_with", Value::Text("aul".into()))
             .unwrap();
         assert!((ends_with)(&"Paul"));
     }
 
     #[test]
     fn exec_ends_with_char() {
-        let op = Operators::default();
-        let ends_with = op
-            .get(&Op::from_str("ends_with"), 0, Value::Char('l'))
+        let ends_with = Operators::default()
+            .ops("ends_with", Value::Char('l'))
             .unwrap();
         assert!((ends_with)(&"Paul"));
 
-        let ends_with = op
-            .get(&Op::from_str("ends_with"), 0, Value::Char('x'))
+        let ends_with = Operators::default()
+            .ops("ends_with", Value::Char('x'))
             .unwrap();
         assert!(!(ends_with)(&"Paul"));
     }
 
     #[test]
     fn exec_one_of_str() {
-        let op = Operators::default();
-        let one_of = op
-            .get(
-                &Op::from_str("one_of"),
-                0,
+        let one_of = Operators::default()
+            .ops(
+                "one_of",
                 Value::List(vec![Value::Text("Inge".into()), Value::Text("Paul".into())]),
             )
             .unwrap();
         assert!((one_of)(&"Paul"));
     }
 
-    #[test_case(Op::from_str("=="),  'f', Value::Char('f')  ; "eqeq 'f'")]
-    #[test_case(Op::from_str("="),  'f', Value::Char('f')  ; "eq 'f'")]
-    #[test_case(Op::from_str("!="),  'g', Value::Char('f')  ; "ne 'g'")]
-    #[test_case(Op::from_str(">"),  'g', Value::Char('f')  ; "gt 'g'")]
-    #[test_case(Op::from_str("<"),  'a', Value::Char('f')  ; "lt 'a'")]
-    fn ops_char(op: Op, arg: char, val: Value) {
-        let ops = Operators::default();
-        let exec = ops.get(&op, 0, val).unwrap();
+    #[test_case("==",  'f', Value::Char('f')  ; "eqeq 'f'")]
+    #[test_case("=",  'f', Value::Char('f')  ; "eq 'f'")]
+    #[test_case("!=",  'g', Value::Char('f')  ; "ne 'g'")]
+    #[test_case(">",  'g', Value::Char('f')  ; "gt 'g'")]
+    #[test_case("<",  'a', Value::Char('f')  ; "lt 'a'")]
+    fn ops_char(op: &str, arg: char, val: Value) {
+        let exec = Operators::default().ops(op, val).unwrap();
         assert!((exec)(&arg));
     }
 
-    #[test_case(Op::from_str("="),  4.2, Value::Float(4.2)  ; "eq 4.2")]
-    #[test_case(Op::from_str("!="),  4.2, Value::Float(5.3)  ; "ne 4.2")]
-    #[test_case(Op::from_str(">"),  4.2, Value::Float(3.1)  ; "gt 4.2")]
-    #[test_case(Op::from_str("<"),  4.2, Value::Float(5.3)  ; "lt 4.2")]
-    fn ops_f32(op: Op, arg: f32, val: Value) {
-        let ops = Operators::default();
-        let exec = ops.get(&op, 0, val).unwrap();
+    #[test_case("=",  4.2, Value::Float(4.2)  ; "eq 4.2")]
+    #[test_case("!=",  4.2, Value::Float(5.3)  ; "ne 4.2")]
+    #[test_case(">",  4.2, Value::Float(3.1)  ; "gt 4.2")]
+    #[test_case("<",  4.2, Value::Float(5.3)  ; "lt 4.2")]
+    fn ops_f32(op: &str, arg: f32, val: Value) {
+        let exec = Operators::default().ops(op, val).unwrap();
         assert!((exec)(&arg));
     }
 
@@ -382,8 +346,7 @@ mod test {
     #[test_case("[0-9]{2}-[0-9]{1}-[0-9]{2}", "1-1-1" => Ok(false)  ; "1-1-1")]
     #[test_case("[0-9]{2-[0-9]{1}-[0-9]{2}", "1-1-1" => Err(FltrError("regex parse error:\n    [0-9]{2-[0-9]{1}-[0-9]{2}\n         ^^\nerror: unclosed counted repetition".into()))  ; "error")]
     fn ops_regex(regex: &str, input: &str) -> Result<bool> {
-        let ops = Operators::default();
-        let exec = ops.get(&Op::from_str("regex"), 0, Value::Text(regex.to_string()))?;
+        let exec = Operators::default().ops("regex", Value::Text(regex.to_string()))?;
         Ok((exec)(&input))
     }
 

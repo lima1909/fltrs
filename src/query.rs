@@ -1,8 +1,8 @@
-use crate::operator::Operators;
+use crate::operator::{flags, Operators};
 use crate::token::{Exp, Filter};
-use crate::{FltrError, PathResolver, Predicate, Result};
+use crate::{FltrError, PathResolver, Predicate, Result, Value};
 
-pub fn query<PR: PathResolver + 'static>(exp: Exp, ops: &Operators<PR>) -> Result<Predicate<PR>> {
+pub fn query<PR: PathResolver + 'static>(exp: Exp, ops: &Operators) -> Result<Predicate<PR>> {
     if exp.ands.is_empty() {
         return Err(FltrError("empty expression is not allowed".into()));
     }
@@ -42,18 +42,45 @@ pub fn query<PR: PathResolver + 'static>(exp: Exp, ops: &Operators<PR>) -> Resul
 
 fn from_filter<PR: PathResolver + 'static>(
     filter: Filter,
-    ops: &Operators<PR>,
+    ops: &Operators,
 ) -> Result<Predicate<PR>> {
     match filter {
-        Filter::Predicate(p) => {
-            let path = p.path.unwrap_or_default();
-            let idx = PR::idx(&path)
-                .map_err(|err| FltrError(format!("{} for value: '{}'", err, p.value)))?;
-            ops.get(&p.op, idx, p.value)
-        }
+        Filter::Predicate(p) => predicate(
+            &p.path.unwrap_or_default(),
+            &p.op.name,
+            p.op.flag,
+            p.value,
+            ops,
+        ),
         Filter::Not(exp) => Ok(Not(query(exp, ops)?).into()),
         Filter::Nested(exp) => Ok(query(exp, ops)?),
     }
+}
+
+fn predicate<PR: PathResolver + 'static>(
+    path: &str,
+    op: &str,
+    flag: Option<char>,
+    v: Value,
+    ops: &Operators, // o: Option<&'a dyn Observer>,
+) -> Result<Predicate<PR>> {
+    let (value, predicate_fn) =
+        flags(v, flag).map_err(|err| FltrError(format!("the operation '{op}' with {err}")))?;
+    let predicate = ops.ops(op, value.clone()).unwrap();
+    let predicate = predicate_fn(predicate);
+
+    let idx = PR::idx(path).map_err(|err| FltrError(format!("{} for value: '{}'", err, value)))?;
+
+    // if let Some(obs) = o {
+    //     return Box::new(move |pr: &PR| {
+    //         let arg = pr.value(idx);
+    //         let result = (predicate)(arg);
+    //         obs.predicate(op, &value, arg, result);
+    //         result
+    //     });
+    // }
+
+    Ok(Box::new(move |pr: &PR| predicate(pr.value(idx))))
 }
 
 struct Not<PR>(Predicate<PR>);
