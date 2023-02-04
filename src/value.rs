@@ -20,12 +20,12 @@ impl Display for Value {
     fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Value::Null => write!(fm, "NULL"),
-            Value::Bool(v) => write!(fm, "{}", v),
-            Value::Int(v) => write!(fm, "{}", v),
-            Value::Float(v) => write!(fm, "{}", v),
-            Value::Char(v) => write!(fm, "'{}'", v),
-            Value::Text(v) => write!(fm, r#""{}""#, v),
-            Value::List(v) => write!(fm, "{:?}", v),
+            Value::Bool(v) => write!(fm, "{v}"),
+            Value::Int(v) => write!(fm, "{v}"),
+            Value::Float(v) => write!(fm, "{v}"),
+            Value::Char(v) => write!(fm, "'{v}'"),
+            Value::Text(v) => write!(fm, r#""{v}""#),
+            Value::List(v) => write!(fm, "{v:?}"),
         }
     }
 }

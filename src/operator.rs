@@ -132,7 +132,7 @@ impl Operators {
             .iter()
             .find(|dop| dop.name == op)
             .map(|dop| (dop.f)(v))
-            .unwrap_or_else(|| Err(FltrError(format!("invalid operation: '{}'", op))))
+            .unwrap_or_else(|| Err(FltrError(format!("invalid operation: '{op}'"))))
     }
 
     pub fn ops_names(&self) -> Vec<&'static str> {

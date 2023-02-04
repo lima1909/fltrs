@@ -207,7 +207,7 @@ pub trait PathResolver {
             .enumerate()
             .find(|(_, p)| **p == path)
             .map(|(idx, _)| idx)
-            .ok_or_else(|| FltrError(format!("invalid path: '{}'", path)))
+            .ok_or_else(|| FltrError(format!("invalid path: '{path}'")))
     }
 }
 

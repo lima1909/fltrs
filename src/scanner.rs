@@ -145,7 +145,7 @@ impl<'a> Scanner<'a> {
 
                 self.ptr += count;
                 if !found {
-                    return Err(self.parse_err(&format!("missing closing character: '{}'", end)));
+                    return Err(self.parse_err(&format!("missing closing character: '{end}'")));
                 }
 
                 if !self.is_done() {
@@ -153,7 +153,7 @@ impl<'a> Scanner<'a> {
                 }
                 Ok(result)
             }
-            _ => Err(self.parse_err(&format!("expected character: '{}' not found", begin))),
+            _ => Err(self.parse_err(&format!("expected character: '{begin}' not found"))),
         }
     }
 

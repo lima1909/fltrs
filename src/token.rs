@@ -19,9 +19,9 @@ impl Display for Exp {
         for i in 0..len {
             let ands = self.ands.get(i).unwrap();
             if i == 0 {
-                write!(fm, "{}", ands)?;
+                write!(fm, "{ands}")?;
             } else {
-                write!(fm, " or {}", ands)?;
+                write!(fm, " or {ands}")?;
             }
         }
         Ok(())
@@ -93,9 +93,9 @@ pub(crate) enum Filter {
 impl Display for Filter {
     fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Filter::Predicate(p) => write!(fm, "{}", p),
-            Filter::Not(exp) => write!(fm, "not ({})", exp),
-            Filter::Nested(exp) => write!(fm, "({})", exp),
+            Filter::Predicate(p) => write!(fm, "{p}"),
+            Filter::Not(exp) => write!(fm, "not ({exp})"),
+            Filter::Nested(exp) => write!(fm, "({exp})"),
         }
     }
 }
@@ -110,7 +110,7 @@ pub(crate) struct Predicate {
 impl Display for Predicate {
     fn fmt(&self, fm: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(p) = &self.path {
-            write!(fm, "{} ", p)?;
+            write!(fm, "{p} ")?;
         }
 
         write!(fm, "{} {}", &self.op, &self.value)

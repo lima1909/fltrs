@@ -69,7 +69,7 @@ fn predicate<PR: PathResolver + 'static>(
     let predicate = ops.ops(op, value.clone()).unwrap();
     let predicate = predicate_fn(predicate);
 
-    let idx = PR::idx(path).map_err(|err| FltrError(format!("{} for value: '{}'", err, value)))?;
+    let idx = PR::idx(path).map_err(|err| FltrError(format!("{err} for value: '{value}'")))?;
 
     // if let Some(obs) = o {
     //     return Box::new(move |pr: &PR| {

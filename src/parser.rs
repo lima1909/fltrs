@@ -240,8 +240,7 @@ pub(crate) fn value_with_as() -> impl FnMut(&mut Parser) -> Result<Value> {
         match parser.get_fn(&as_type) {
             Some(f) => Ok((f)(v)),
             None => Err(parser.parse_err(&format!(
-                "unknown function: '{}' for converting the value: '{}'",
-                as_type, v
+                "unknown function: '{as_type}' for converting the value: '{v}'",
             ))),
         }
     }
@@ -379,9 +378,9 @@ where
     move |parser: &mut Parser| {
         if parser.take(input) {
             V::from_str(input)
-                .map_err(|_| parser.parse_err(&format!("unexpected type for value: '{}'", input)))
+                .map_err(|_| parser.parse_err(&format!("unexpected type for value: '{input}'")))
         } else {
-            Err(parser.parse_err(&format!("expected input: '{}' not found", input)))
+            Err(parser.parse_err(&format!("expected input: '{input}' not found")))
         }
     }
 }
